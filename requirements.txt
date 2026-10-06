@@ -1,0 +1,6 @@
+numpy
+sounddevice
+python-dotenv
+elevenlabs
+pillow
+vosk

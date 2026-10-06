@@ -1,0 +1,2 @@
+Ici, Jarvis range les competences (outils Python) qu il se code lui-meme.
+Chacune est testee avant d etre activee. Tu peux en supprimer une a la voix : "Jarvis, supprime la competence meteo".

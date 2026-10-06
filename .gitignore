@@ -1,0 +1,19 @@
+# Secrets et données personnelles : ne JAMAIS publier
+.env
+.cache/
+jarvis.log
+jarvis.ancien.log
+# Gros fichiers téléchargés par les installateurs
+.venv/
+modeles/
+__pycache__/
+*.pyc
+# Contenu personnel / généré
+musique/*
+!musique/LISEZ-MOI.txt
+creations/*
+!creations/LISEZ-MOI.txt
+competences/*
+!competences/LISEZ-MOI.txt
+espace_jarvis/
+faceit_niveau.png

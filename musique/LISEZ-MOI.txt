@@ -1,0 +1,3 @@
+Mets ici tes musiques (mp3, wav, m4a, wma).
+La premiere (par ordre alphabetique) est jouee a la fin de l intro.
+Pour en choisir une autre : JARVIS_MUSIQUE_INTRO=nom_du_fichier.mp3 dans .env

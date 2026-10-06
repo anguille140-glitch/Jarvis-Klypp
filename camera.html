@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Jarvis Vision</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oxanium:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Panneau holographique Jarvis : démarrage, scan biométrique, puis contrôle gestuel. Tout est dessiné sur le canvas. */
+:root { color-scheme: dark; --void: #02060b; }
+html, body { margin: 0; height: 100%; background: var(--void); overflow: hidden; }
+canvas { position: fixed; inset: 0; width: 100%; height: 100%; }
+video { display: none; }
+</style>
+</head>
+<body>
+<video id="v" playsinline muted></video>
+<canvas id="c"></canvas>
+<script type="module">
+// =============================================================== réglages
+const Q = new URLSearchParams(location.search);
+const USER = (Q.get("user") || "KLYPP").toUpperCase();
+const SCAN_S = 2.6;                                         // durée de l'analyse du visage
+const ZONE = { x0: .2, x1: .8, y0: .18, y1: .72 };           // zone de la caméra = tout l'écran
+const C = { void: "#02060b", ion: "#3fd8ff", ice: "#d9f6ff", ember: "#ffad42", alert: "#ff4d5e", steel: "#2b5a6e", dim: "#6f98aa" };
+const TAU = Math.PI * 2;
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, k) => a + (b - a) * k;
+const ease = k => k * k * (3 - 2 * k);
+const out3 = k => 1 - Math.pow(1 - k, 3);
+const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; };
+
+const cv = document.getElementById("c"), ctx = cv.getContext("2d"), video = document.getElementById("v");
+let W, H, dpr;
+function resize() { dpr = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); }
+addEventListener("resize", resize); resize();
+
+function text(s, x, y, size, color, { align = "left", font = "mono", weight = 400, spacing = 0, alpha = 1, glow = 0 } = {}) {
+  ctx.save(); ctx.globalAlpha *= alpha; ctx.fillStyle = color; ctx.textBaseline = "middle"; ctx.textAlign = align;
+  ctx.font = `${weight} ${size}px ${font === "display" ? '"Oxanium","Segoe UI",sans-serif' : '"IBM Plex Mono",Consolas,monospace'}`;
+  if (spacing) ctx.letterSpacing = `${spacing}px`;
+  if (glow) { ctx.shadowColor = color; ctx.shadowBlur = glow; }
+  ctx.fillText(s, x, y); ctx.restore();
+}
+const line = (x1, y1, x2, y2, col, w = 1, a = 1) => { ctx.save(); ctx.globalAlpha *= a; ctx.strokeStyle = col; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.restore(); };
+
+// =============================================================== liaison avec Jarvis : UNE connexion permanente
+let ws = null, wsOk = false, latency = null, pingId = 0, pingAt = {};
+function connect() {
+  try { ws = new WebSocket(`ws://${location.host}/ws`); } catch (e) { setTimeout(connect, 1000); return; }
+  ws.onopen = () => { wsOk = true; ws.send(JSON.stringify({ t: "up" })); };
+  ws.onmessage = e => { try { const m = JSON.parse(e.data); if (m.t === "pong" && pingAt[m.id]) { latency = performance.now() - pingAt[m.id]; delete pingAt[m.id]; } } catch (_) {} };
+  ws.onclose = () => { wsOk = false; setTimeout(connect, 600); };          // reconnexion automatique
+  ws.onerror = () => { try { ws.close(); } catch (_) {} };
+}
+connect();
+setInterval(() => { if (wsOk) { pingAt[++pingId] = performance.now(); ws.send(JSON.stringify({ t: "ping", id: pingId })); } }, 1000);
+// les déplacements peuvent être sautés si la liaison est chargée (le suivant arrive 16 ms après) ;
+// les clics, défilements et zooms ne sont JAMAIS perdus
+const cmd = o => { if (!wsOk) return; if (o.t === "move" && ws.bufferedAmount > 2048) return; ws.send(JSON.stringify(o)); };
+const post = (path, o) => fetch(path, { method: "POST", body: JSON.stringify(o) }).then(r => r.json()).catch(() => ({}));
+
+// =============================================================== filtre « one euro » : curseur stable mais réactif
+class OneEuro {
+  constructor(minCut = 1.2, beta = .025, dCut = 1) { Object.assign(this, { minCut, beta, dCut, x: null, dx: 0, t: 0 }); }
+  a(cut, dt) { const r = TAU * cut * dt; return r / (r + 1); }
+  f(v, t) {
+    if (this.x === null || t - this.t > 500) { this.x = v; this.dx = 0; this.t = t; return v; }
+    const dt = Math.max(1e-3, (t - this.t) / 1000); this.t = t;
+    this.dx = lerp(this.dx, (v - this.x) / dt, this.a(this.dCut, dt));
+    this.x = lerp(this.x, v, this.a(this.minCut + this.beta * Math.abs(this.dx), dt)); return this.x;
+  }
+}
+const fx = new OneEuro(), fy = new OneEuro();
+
+// =============================================================== état
+let phase = "boot", phaseT = performance.now();             // boot → scan → granted | denied → control
+const setPhase = p => { phase = p; phaseT = performance.now(); glitchT = performance.now(); };
+let glitchT = 0, status = "", errorMsg = "";
+let scanProg = 0, lastFace = null, faceSigs = [], verdict = null, faceShot = null;
+let hands = [], gesture = "—", down = false, lastV = null, scrollAcc = 0, lastRight = 0, zoomD = null, zoomAcc = 0, zoomLevel = 0;
+let cursor = { u: .5, v: .5 }, trail = [], tipTrails = { 4: [], 8: [] }, sparks = [];
+let fps = 0, frames = 0, fpsT = performance.now(), lastVideoAdvance = performance.now(), detectErrors = 0;
+const bootLines = [
+  ["CAPTEURS OPTIQUES", 0], ["MATRICE NEURONALE DE VISION", .35], ["MODULE BIOMÉTRIQUE", .7], ["SUIVI DES MAINS · 21 POINTS", 1.05], ["LIAISON SYSTÈME", 1.4],
+];
+let bootOk = 0;
+
+// =============================================================== caméra + MediaPipe
+let vision = null, handLM = null, faceLM = null, stream = null;
+async function startCamera() {
+  try {
+    stream?.getTracks().forEach(t => t.stop());
+    stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720, facingMode: "user" }, audio: false });
+    video.srcObject = stream; await video.play();
+    stream.getVideoTracks()[0].addEventListener("ended", () => setTimeout(startCamera, 500));   // caméra débranchée / mise en veille
+    lastVideoAdvance = performance.now();
+    return true;
+  } catch (e) { errorMsg = "CAMÉRA INACCESSIBLE"; status = "VÉRIFIE QU'ELLE EST BRANCHÉE ET LIBRE"; post("event", { t: "error", msg: String(e) }); return false; }
+}
+async function loadModels(delegate = "GPU") {
+  const V = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+  vision = vision || await import(`${V}/vision_bundle.mjs`);
+  const files = await vision.FilesetResolver.forVisionTasks(`${V}/wasm`);
+  const make = async (Task, url, extra) => {
+    try { return await Task.createFromOptions(files, { baseOptions: { modelAssetPath: url, delegate }, runningMode: "VIDEO", ...extra }); }
+    catch (e) { return await Task.createFromOptions(files, { baseOptions: { modelAssetPath: url, delegate: "CPU" }, runningMode: "VIDEO", ...extra }); }
+  };
+  [faceLM, handLM] = await Promise.all([
+    make(vision.FaceLandmarker, "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task", { numFaces: 1 }),
+    make(vision.HandLandmarker, "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task", { numHands: 2, minHandDetectionConfidence: .6, minTrackingConfidence: .5 }),
+  ]);
+}
+async function init() {
+  if (!(await startCamera())) return;
+  try { await loadModels(); } catch (e) { errorMsg = "MODULES DE VISION INDISPONIBLES"; status = "CONNEXION INTERNET NÉCESSAIRE"; post("event", { t: "error", msg: String(e) }); return; }
+  bootOk = 1;
+}
+// chien de garde : image figée -> on relance la caméra ; détection en erreur -> on recharge les modèles (CPU)
+setInterval(async () => {
+  if (phase !== "boot" && stream && performance.now() - lastVideoAdvance > 2500) { status = "RELANCE DE LA CAMÉRA"; await startCamera(); }
+  if (detectErrors > 20) { detectErrors = 0; try { await loadModels("CPU"); } catch (_) {} }
+}, 1000);
+
+// =============================================================== empreinte du visage (forme, indépendante de la distance)
+const PAIRS = [[1, 152], [10, 152], [234, 454], [61, 291], [98, 327], [133, 362], [1, 10], [70, 300], [1, 61], [1, 291], [33, 1], [263, 1], [152, 61], [152, 291], [168, 1], [4, 152]];
+const signature = lm => { const d = (a, b) => Math.hypot(lm[a].x - lm[b].x, lm[a].y - lm[b].y), e = d(33, 263); return PAIRS.map(([a, b]) => d(a, b) / e); };
+const avg = s => s[0].map((_, i) => s.reduce((t, v) => t + v[i], 0) / s.length);
+
+function grabFace(face) {                                   // photo du visage pour la fiche d'identité
+  if (!face || video.readyState < 2) return;
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const xs = face.map(p => p.x * vw), ys = face.map(p => p.y * vh);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys), s = Math.max(x1 - x0, y1 - y0) * 1.25;
+  const c = document.createElement("canvas"); c.width = c.height = 120; const g = c.getContext("2d");
+  g.translate(120, 0); g.scale(-1, 1); g.filter = "grayscale(1) contrast(1.3)";
+  g.drawImage(video, (x0 + x1) / 2 - s / 2, (y0 + y1) / 2 - s / 2, s, s, 0, 0, 120, 120);
+  g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = "multiply"; g.fillStyle = "#4cc8ff"; g.fillRect(0, 0, 120, 120);
+  faceShot = c;
+}
+
+// =============================================================== gestes
+const D2 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+function readGesture(lm) {
+  const size = D2(lm[0], lm[9]) || 1e-3, ext = (tip, pip) => D2(lm[tip], lm[0]) > D2(lm[pip], lm[0]) * 1.12;
+  const fI = ext(8, 6), fM = ext(12, 10), fR = ext(16, 14), fP = ext(20, 18);
+  const pinchI = D2(lm[4], lm[8]) / size, pinchM = D2(lm[4], lm[12]) / size;
+  return { pinchI, pinchM, fist: !fI && !fM && !fR && !fP && pinchI > .3, scroll: fI && fM && !fR && !fP && pinchI > .5 };
+}
+function release() { if (down) { cmd({ t: "up" }); down = false; } }
+
+function control(list, now) {
+  if (!list.length) { gesture = "AUCUNE MAIN"; release(); zoomD = null; lastV = null; return; }
+  // deux mains pincées : zoom (écarter = zoomer)
+  if (list.length === 2) {
+    const g0 = readGesture(list[0]), g1 = readGesture(list[1]);
+    if (g0.pinchI < .32 && g1.pinchI < .32) {
+      release();
+      const p0 = { x: (list[0][4].x + list[0][8].x) / 2, y: (list[0][4].y + list[0][8].y) / 2 };
+      const p1 = { x: (list[1][4].x + list[1][8].x) / 2, y: (list[1][4].y + list[1][8].y) / 2 };
+      const d = D2(p0, p1);
+      if (zoomD !== null) { zoomAcc += (d - zoomD) * 18; const n = Math.trunc(zoomAcc); if (n) { cmd({ t: "zoom", n }); zoomAcc -= n; zoomLevel += n; } }
+      zoomD = d; gesture = "ZOOM"; return;
+    }
+  }
+  zoomD = null; zoomAcc = 0;
+  // la main la plus à droite à l'écran pilote (l'autre peut rester visible sans gêner)
+  const lm = list.length === 2 ? (list[0][0].x < list[1][0].x ? list[0] : list[1]) : list[0];
+  const g = readGesture(lm);
+  const ax = 1 - (lm[5].x * .6 + lm[0].x * .4), ay = lm[5].y * .6 + lm[0].y * .4;      // base de la main : stable en pinçant
+  const u = fx.f(clamp((ax - ZONE.x0) / (ZONE.x1 - ZONE.x0)), now), v = fy.f(clamp((ay - ZONE.y0) / (ZONE.y1 - ZONE.y0)), now);
+  if (g.fist) { gesture = "PAUSE"; release(); lastV = null; return; }
+  if (g.scroll) {
+    gesture = "DÉFILEMENT"; release();
+    if (lastV !== null) { scrollAcc += (lastV - v) * 22; const n = Math.trunc(scrollAcc); if (n) { cmd({ t: "scroll", n }); scrollAcc -= n; } }
+    lastV = v; return;
+  }
+  lastV = null; scrollAcc = 0;
+  cursor = { u, v }; trail.push({ u, v, t: now }); while (trail.length > 24) trail.shift();
+  cmd({ t: "move", u, v });
+  if (list.length === 1 && !down && g.pinchI < .28) { down = true; cmd({ t: "down" }); burst(lm, C.ice); }
+  else if (down && g.pinchI > .42) release();
+  if (list.length === 1 && !down && g.pinchM < .26 && g.pinchI > .5 && now - lastRight > 700) { lastRight = now; cmd({ t: "right" }); burst(lm, C.ember); }
+  gesture = down ? "CLIC · GLISSER" : now - lastRight < 400 ? "CLIC DROIT" : "POINTEUR";
+}
+
+// =============================================================== boucle
+let lastVideoTime = -1;
+function loop(now) {
+  requestAnimationFrame(loop);
+  frames++; if (now - fpsT > 1000) { fps = frames; frames = 0; fpsT = now; }
+  if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
+    lastVideoTime = video.currentTime; lastVideoAdvance = now;
+    try {
+      if (phase === "scan" && faceLM) lastFace = faceLM.detectForVideo(video, now).faceLandmarks?.[0] || null;
+      if ((phase === "control" || phase === "granted") && handLM) {
+        hands = handLM.detectForVideo(video, now).landmarks || [];
+        if (phase === "control") control(hands, now);
+      }
+      detectErrors = 0;
+    } catch (e) { detectErrors++; }
+  }
+  update(now); draw(now);
+}
+
+function update(now) {
+  const el = (now - phaseT) / 1000;
+  if (phase === "boot" && bootOk && el > 2.1) { setPhase("scan"); status = "PLACE TON VISAGE FACE À LA CAMÉRA"; }
+  if (phase === "scan") {
+    const f = lastFace;
+    if (f) {
+      const ok = Math.abs((1 - f[1].x) - .5) < .22 && Math.abs(f[1].y - .5) < .25;
+      if (ok) { scanProg = clamp(scanProg + 1 / 60 / SCAN_S); status = "ANALYSE BIOMÉTRIQUE EN COURS";
+        if (Math.abs((f[33].x + f[263].x) / 2 - f[1].x) < .02) faceSigs.push(signature(f)); }
+      else status = "CENTRE TON VISAGE";
+    } else { scanProg = Math.max(0, scanProg - 1 / 180); status = "AUCUN VISAGE DÉTECTÉ"; }
+    if (scanProg >= 1 && verdict === null) {
+      verdict = "pending"; grabFace(f);
+      const sig = avg(faceSigs.length >= 5 ? faceSigs.slice(-30) : [signature(f)]);
+      post("face", { sig }).then(r => {
+        verdict = r.ok === undefined ? { ok: true, score: 1 } : r;
+        if (verdict.ok) { status = "ACCÈS AUTORISÉ"; setPhase("granted"); } else { status = "ACCÈS REFUSÉ · NOUVEL ESSAI"; setPhase("denied"); }
+        post("event", { t: "auth", ok: verdict.ok, enrolled: !!verdict.enrolled, score: verdict.score });
+      });
+    }
+  }
+  if (phase === "granted" && el > 3) { setPhase("control"); }
+  if (phase === "denied" && el > 4) { scanProg = 0; faceSigs = []; verdict = null; setPhase("scan"); }
+  sparks = sparks.filter(s => (s.life -= 1 / 60) > 0); sparks.forEach(s => { s.x += s.vx; s.y += s.vy; s.vx *= .94; s.vy *= .94; });
+}
+function burst(lm, col) {
+  const r = videoRect(), p = P(lm[8], r);
+  for (let i = 0; i < 18; i++) { const a = Math.random() * TAU, s = 1 + Math.random() * 3; sparks.push({ x: p.x, y: p.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: .6, col }); }
+}
+
+// =============================================================== dessin
+function videoRect() { const vw = video.videoWidth || 1280, vh = video.videoHeight || 720, s = Math.max(W / vw, H / vh); return { w: vw * s, h: vh * s, x: (W - vw * s) / 2, y: (H - vh * s) / 2 }; }
+const P = (lm, r) => ({ x: r.x + (1 - lm.x) * r.w, y: r.y + lm.y * r.h });
+const BONES = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+const OVAL = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109,10];
+
+function draw(now) {
+  const t = now / 1000, r = videoRect();
+  ctx.fillStyle = C.void; ctx.fillRect(0, 0, W, H);
+  // flux caméra en hologramme
+  if (video.readyState >= 2) {
+    ctx.save(); ctx.translate(W, 0); ctx.scale(-1, 1); ctx.filter = "grayscale(1) contrast(1.35) brightness(.7)";
+    ctx.globalAlpha = phase === "control" ? .28 : .5; ctx.drawImage(video, W - r.x - r.w, r.y, r.w, r.h); ctx.restore();
+    ctx.save(); ctx.globalCompositeOperation = "multiply"; ctx.fillStyle = "#33b4ff"; ctx.fillRect(0, 0, W, H); ctx.restore();
+  }
+  drawHexGrid(t);
+  ctx.save(); ctx.fillStyle = "rgba(2,6,11,.2)"; for (let y = (t * 24) % 3; y < H; y += 3) ctx.fillRect(0, y, W, 1); ctx.restore();
+  const vg = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .25, W / 2, H / 2, Math.max(W, H) * .7);
+  vg.addColorStop(0, "rgba(2,6,11,0)"); vg.addColorStop(1, "rgba(2,6,11,.9)"); ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+
+  if (phase === "boot") drawBoot(t);
+  if (phase === "scan" || phase === "granted" || phase === "denied") drawFace(lastFace, r, t);
+  if (phase === "granted" || phase === "denied") drawCard(t);
+  if (phase === "control") { drawZone(r); hands.forEach((h, i) => drawHand(h, r, t, i)); drawZoom(r); drawMinimap(t); drawLegend(); }
+  sparks.forEach(s => { ctx.fillStyle = rgba(s.col, s.life / .6); ctx.fillRect(s.x - 1.2, s.y - 1.2, 2.4, 2.4); });
+  drawFrame(t);
+  glitch(now);
+}
+
+function drawHexGrid(t) {
+  ctx.save(); ctx.strokeStyle = rgba(C.ion, .05); ctx.lineWidth = 1;
+  const s = 22, h = s * Math.sqrt(3);
+  for (let y = -h; y < H + h; y += h) for (let x = -s * 3; x < W + s * 3; x += s * 3) {
+    [[x, y], [x + s * 1.5, y + h / 2]].forEach(([cx, cy]) => {
+      ctx.beginPath(); for (let k = 0; k < 6; k++) { const a = k * TAU / 6; ctx.lineTo(cx + Math.cos(a) * s * .95, cy + Math.sin(a) * s * .95); } ctx.closePath(); ctx.stroke(); });
+  }
+  const sweep = (t * .25 % 1) * (H + 200) - 100, g = ctx.createLinearGradient(0, sweep - 80, 0, sweep);
+  g.addColorStop(0, rgba(C.ion, 0)); g.addColorStop(1, rgba(C.ion, .06)); ctx.fillStyle = g; ctx.fillRect(0, sweep - 80, W, 80);
+  ctx.restore();
+}
+
+function drawFrame(t) {
+  ctx.save(); ctx.strokeStyle = rgba(C.ion, .75); ctx.lineWidth = 2; ctx.shadowColor = C.ion; ctx.shadowBlur = 6;
+  [[10, 10, 1, 1], [W - 10, 10, -1, 1], [10, H - 10, 1, -1], [W - 10, H - 10, -1, -1]].forEach(([x, y, sx, sy]) => { ctx.beginPath(); ctx.moveTo(x, y + sy * 30); ctx.lineTo(x, y); ctx.lineTo(x + sx * 30, y); ctx.stroke(); });
+  ctx.restore();
+  line(150, 40, W - 150, 40, C.ion, 1, .25); line(W / 2 - 60, 40, W / 2 - 50, 48, C.ion, 1, .4); line(W / 2 - 50, 48, W / 2 + 50, 48, C.ion, 1, .4); line(W / 2 + 50, 48, W / 2 + 60, 40, C.ion, 1, .4);
+  text("JARVIS  //  VISION OPTIQUE", 24, 26, 11, C.ion, { spacing: 2, weight: 500 });
+  text(new Date().toLocaleTimeString("fr-FR"), W - 24, 26, 12, C.ice, { align: "right", font: "display", weight: 600 });
+  const live = wsOk ? C.ion : C.alert;
+  ctx.save(); ctx.fillStyle = live; ctx.shadowColor = live; ctx.shadowBlur = 8; ctx.globalAlpha = .5 + .5 * Math.sin(t * 5); ctx.beginPath(); ctx.arc(W / 2, 26, 3.5, 0, TAU); ctx.fill(); ctx.restore();
+  text(wsOk ? "EN LIGNE" : "RECONNEXION", W / 2 + 10, 26, 9, live, { spacing: 1.5 });
+  // ligne d'état
+  const label = phase === "control" ? `CONTRÔLE GESTUEL  ·  ${gesture}` : (errorMsg ? status : status);
+  const col = phase === "denied" || errorMsg ? C.alert : phase === "granted" ? C.ember : C.ion;
+  text(label, W / 2, H - 24, 12, col, { align: "center", spacing: 2, weight: 500, glow: 6 });
+  if (errorMsg) text(errorMsg, W / 2, H / 2, 17, C.alert, { align: "center", font: "display", weight: 600, spacing: 2, glow: 10 });
+  // télémétrie (gauche)
+  if (phase === "control" || phase === "scan") {
+    const rows = [["IPS", `${fps}`], ["LATENCE", latency == null ? "—" : `${latency.toFixed(1)} ms`], ["MAINS", `${hands.length}`], ["ZOOM", `${zoomLevel >= 0 ? "+" : ""}${zoomLevel}`]];
+    rows.forEach(([k, v], i) => { text(k, 24, 66 + i * 17, 9, C.dim, { spacing: 1.2 }); text(v, 150, 66 + i * 17, 10, C.ice, { align: "right" }); });
+  }
+}
+
+function drawBoot(t) {
+  const el = (performance.now() - phaseT) / 1000;
+  const cx = W / 2, cy = H / 2 - 20;
+  for (let k = 0; k < 4; k++) { ctx.save(); ctx.strokeStyle = rgba(C.ion, .25 + k * .15); ctx.lineWidth = 2 - k * .3; ctx.beginPath();
+    const a = t * (k % 2 ? -1.3 : .9) + k; ctx.arc(cx, cy, 50 + k * 16, a, a + 1.2 + k * .4); ctx.stroke(); ctx.restore(); }
+  text("INITIALISATION", cx, cy, 13, C.ice, { align: "center", font: "display", weight: 600, spacing: 3, glow: 10 });
+  bootLines.forEach(([name, at], i) => {
+    if (el < at) return;
+    const y = cy + 110 + i * 18, ok = bootOk ? el > at + .3 : false;
+    text(`> ${name}`, cx - 170, y, 10, C.dim, { spacing: 1 });
+    text(ok ? "OK" : ".".repeat(1 + Math.floor(t * 6) % 3), cx + 170, y, 10, ok ? C.ion : C.dim, { align: "right", weight: 500 });
+  });
+}
+
+function drawFace(face, r, t) {
+  if (!face) return;
+  const pts = face.map(p => P(p, r)), bad = phase === "denied", col = bad ? C.alert : phase === "granted" ? C.ember : C.ion;
+  // maillage triangulé (modèle 3D du visage)
+  const T = vision?.FaceLandmarker?.FACE_LANDMARKS_TESSELATION;
+  ctx.save(); ctx.strokeStyle = rgba(col, .16); ctx.lineWidth = .6; ctx.beginPath();
+  if (T) T.forEach(({ start, end }) => { ctx.moveTo(pts[start].x, pts[start].y); ctx.lineTo(pts[end].x, pts[end].y); });
+  ctx.stroke();
+  ctx.fillStyle = rgba(col, .6); for (let i = 0; i < pts.length; i += 3) ctx.fillRect(pts[i].x - .7, pts[i].y - .7, 1.4, 1.4);
+  ctx.restore();
+  const Cn = vision?.FaceLandmarker?.FACE_LANDMARKS_CONTOURS;
+  ctx.save(); ctx.strokeStyle = rgba(col, .85); ctx.lineWidth = 1.3; ctx.shadowColor = col; ctx.shadowBlur = 8; ctx.beginPath();
+  if (Cn) Cn.forEach(({ start, end }) => { ctx.moveTo(pts[start].x, pts[start].y); ctx.lineTo(pts[end].x, pts[end].y); });
+  else OVAL.forEach((i, k) => k ? ctx.lineTo(pts[i].x, pts[i].y) : ctx.moveTo(pts[i].x, pts[i].y));
+  ctx.stroke(); ctx.restore();
+  // cadre + réticule + progression circulaire
+  const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys), cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  const pad = 16, lock = phase === "scan" ? ease(scanProg) : 1, o = (1 - lock) * 24, L = 20;
+  ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.shadowColor = col; ctx.shadowBlur = 10;
+  [[x0 - pad - o, y0 - pad - o, 1, 1], [x1 + pad + o, y0 - pad - o, -1, 1], [x0 - pad - o, y1 + pad + o, 1, -1], [x1 + pad + o, y1 + pad + o, -1, -1]]
+    .forEach(([x, y, sx, sy]) => { ctx.beginPath(); ctx.moveTo(x, y + sy * L); ctx.lineTo(x, y); ctx.lineTo(x + sx * L, y); ctx.stroke(); });
+  ctx.restore();
+  const rr = Math.max(x1 - x0, y1 - y0) * .8;
+  ctx.save(); ctx.strokeStyle = rgba(col, .25); ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, TAU); ctx.stroke();
+  ctx.strokeStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 12; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.arc(cx, cy, rr, -Math.PI / 2, -Math.PI / 2 + TAU * (phase === "scan" ? scanProg : 1)); ctx.stroke();
+  ctx.lineWidth = 1.2; ctx.shadowBlur = 0; ctx.strokeStyle = rgba(col, .5);
+  for (let k = 0; k < 3; k++) { const a = t * (k % 2 ? -1.2 : .8) + k * 2; ctx.beginPath(); ctx.arc(cx, cy, rr + 12 + k * 8, a, a + .9); ctx.stroke(); }
+  for (let k = 0; k < 36; k++) { const a = k / 36 * TAU, r1 = rr - 6, r2 = rr - (k % 3 ? 10 : 15); line(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1, cx + Math.cos(a) * r2, cy + Math.sin(a) * r2, col, 1, .35); }
+  ctx.restore();
+  if (phase === "scan") {
+    const sy = lerp(y0 - pad, y1 + pad, (Math.sin(t * 2.4) + 1) / 2), g = ctx.createLinearGradient(0, sy - 30, 0, sy);
+    g.addColorStop(0, rgba(C.ion, 0)); g.addColorStop(1, rgba(C.ion, .3)); ctx.fillStyle = g; ctx.fillRect(x0 - pad, sy - 30, x1 - x0 + 2 * pad, 30);
+    line(x0 - pad - 10, sy, x1 + pad + 10, sy, C.ice, 1.5, .9);
+    text(`${Math.round(scanProg * 100)} %`, cx, y1 + pad + 30, 20, C.ice, { align: "center", font: "display", weight: 600, glow: 12 });
+    // points clés qui « s'accrochent »
+    [33, 263, 1, 61, 291, 152, 10].forEach((i, k) => { if (scanProg * 7 > k) { const p = pts[i]; ctx.save(); ctx.strokeStyle = C.ember; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, TAU); ctx.stroke(); ctx.restore(); } });
+  }
+}
+
+function drawCard(t) {
+  // fiche d'identité qui glisse depuis la droite
+  const k = out3(clamp((performance.now() - phaseT) / 500)), w = 210, h = 150, x = W - 24 - w * k, y = 70;
+  const ok = phase === "granted", col = ok ? C.ember : C.alert;
+  ctx.save(); ctx.globalAlpha = k; ctx.fillStyle = "rgba(6,18,28,.85)"; ctx.strokeStyle = rgba(col, .8); ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.moveTo(x + 12, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + h - 12); ctx.lineTo(x + w - 12, y + h); ctx.lineTo(x, y + h); ctx.lineTo(x, y + 12); ctx.closePath(); ctx.fill(); ctx.stroke();
+  if (faceShot) { ctx.drawImage(faceShot, x + 12, y + 30, 70, 70); ctx.strokeStyle = rgba(col, .6); ctx.strokeRect(x + 12, y + 30, 70, 70); }
+  ctx.restore();
+  text(ok ? "IDENTITÉ CONFIRMÉE" : "ACCÈS REFUSÉ", x + 12, y + 15, 10, col, { spacing: 1.6, weight: 500, alpha: k });
+  text(ok ? USER : "INCONNU", x + 94, y + 44, 18, C.ice, { font: "display", weight: 700, spacing: 1.5, alpha: k, glow: 8 });
+  text(ok ? "ACCÈS : NIVEAU OMÉGA" : "ACCÈS : AUCUN", x + 94, y + 68, 9, C.dim, { spacing: 1, alpha: k });
+  if (verdict && verdict !== "pending" && verdict.score != null) text(`CORRESP. ${Math.round(verdict.score * 100)} %`, x + 94, y + 86, 9, C.dim, { spacing: 1, alpha: k });
+  text(ok ? (verdict?.enrolled ? "PROFIL ENREGISTRÉ" : `BIENVENUE, ${USER}`) : "VISAGE NON RECONNU", x + 12, y + 122, 12, col, { font: "display", weight: 600, spacing: 1.2, alpha: k, glow: 8 });
+}
+
+function drawZone(r) {
+  const a = P({ x: 1 - ZONE.x0, y: ZONE.y0 }, r), b = P({ x: 1 - ZONE.x1, y: ZONE.y1 }, r);
+  ctx.save(); ctx.strokeStyle = rgba(C.ion, .22); ctx.setLineDash([3, 7]); ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y); ctx.restore();
+}
+
+function drawHand(lm, r, t, idx) {
+  const pts = lm.map(p => P(p, r));
+  const col = gesture === "PAUSE" ? C.ember : gesture === "ZOOM" ? C.ember : down ? C.ice : C.ion;
+  // traînées lumineuses du pouce et de l'index
+  if (idx === 0) [4, 8].forEach(i => { const tr = tipTrails[i]; tr.push(pts[i]); while (tr.length > 14) tr.shift();
+    ctx.save(); ctx.lineCap = "round"; for (let k = 1; k < tr.length; k++) { ctx.strokeStyle = rgba(col, k / tr.length * .6); ctx.lineWidth = k / tr.length * 3; ctx.beginPath(); ctx.moveTo(tr[k - 1].x, tr[k - 1].y); ctx.lineTo(tr[k].x, tr[k].y); ctx.stroke(); } ctx.restore(); });
+  ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.strokeStyle = rgba(col, .9); ctx.lineWidth = 2.4; ctx.lineCap = "round"; ctx.shadowColor = col; ctx.shadowBlur = 14;
+  BONES.forEach(([a, b]) => { ctx.beginPath(); ctx.moveTo(pts[a].x, pts[a].y); ctx.lineTo(pts[b].x, pts[b].y); ctx.stroke(); });
+  ctx.fillStyle = C.ice; pts.forEach((p, i) => { ctx.beginPath(); ctx.arc(p.x, p.y, [4, 8, 12, 16, 20].includes(i) ? 3.6 : 2.2, 0, TAU); ctx.fill(); });
+  ctx.restore();
+  // jauge de pincement entre pouce et index
+  const g = readGesture(lm), pk = clamp(1 - (g.pinchI - .28) / .4);
+  line(pts[4].x, pts[4].y, pts[8].x, pts[8].y, pk > .99 ? C.ice : C.ion, 1, .25 + pk * .6);
+  // réticule au point de commande
+  const ax = pts[5].x * .6 + pts[0].x * .4, ay = pts[5].y * .6 + pts[0].y * .4;
+  ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.shadowColor = col; ctx.shadowBlur = 14;
+  ctx.beginPath(); ctx.arc(ax, ay, down ? 9 : 15, 0, TAU); ctx.stroke();
+  ctx.beginPath(); ctx.arc(ax, ay, 24, t * 3, t * 3 + 1.3); ctx.stroke(); ctx.beginPath(); ctx.arc(ax, ay, 24, t * 3 + Math.PI, t * 3 + Math.PI + 1.3); ctx.stroke();
+  ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(ax, ay, 31, -Math.PI / 2, -Math.PI / 2 + TAU * pk); ctx.stroke();
+  ctx.restore();
+}
+
+function drawZoom(r) {
+  if (gesture !== "ZOOM" || hands.length < 2) return;
+  const a = P({ x: (hands[0][4].x + hands[0][8].x) / 2, y: (hands[0][4].y + hands[0][8].y) / 2 }, r);
+  const b = P({ x: (hands[1][4].x + hands[1][8].x) / 2, y: (hands[1][4].y + hands[1][8].y) / 2 }, r);
+  ctx.save(); ctx.strokeStyle = C.ember; ctx.lineWidth = 2; ctx.shadowColor = C.ember; ctx.shadowBlur = 14; ctx.setLineDash([8, 6]);
+  ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.restore();
+  text(`ZOOM ${zoomLevel >= 0 ? "+" : ""}${zoomLevel}`, (a.x + b.x) / 2, (a.y + b.y) / 2 - 16, 14, C.ember, { align: "center", font: "display", weight: 700, glow: 10 });
+}
+
+function drawMinimap(t) {
+  // mini-carte de ton écran : où est le curseur
+  const w = 130, h = 74, x = W - 24 - w, y = 62;
+  ctx.save(); ctx.fillStyle = "rgba(6,18,28,.7)"; ctx.strokeStyle = rgba(C.ion, .5); ctx.lineWidth = 1; ctx.fillRect(x, y, w, h); ctx.strokeRect(x, y, w, h);
+  ctx.strokeStyle = rgba(C.ion, .12); for (let i = 1; i < 4; i++) { ctx.beginPath(); ctx.moveTo(x + i * w / 4, y); ctx.lineTo(x + i * w / 4, y + h); ctx.stroke(); }
+  ctx.lineCap = "round"; for (let k = 1; k < trail.length; k++) { ctx.strokeStyle = rgba(C.ion, k / trail.length * .7); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x + trail[k - 1].u * w, y + trail[k - 1].v * h); ctx.lineTo(x + trail[k].u * w, y + trail[k].v * h); ctx.stroke(); }
+  const cx = x + cursor.u * w, cy = y + cursor.v * h;
+  ctx.fillStyle = down ? C.ice : C.ion; ctx.shadowColor = C.ion; ctx.shadowBlur = 10; ctx.beginPath(); ctx.arc(cx, cy, 3.5, 0, TAU); ctx.fill();
+  ctx.restore();
+  text("ÉCRAN", x, y - 8, 9, C.dim, { spacing: 1.5 });
+  text(`${Math.round(cursor.u * 100)} · ${Math.round(cursor.v * 100)}`, x + w, y - 8, 9, C.ice, { align: "right" });
+}
+
+function drawLegend() {
+  const items = [["POINTEUR", "MAIN"], ["CLIC · GLISSER", "PINCE"], ["CLIC DROIT", "POUCE+MAJEUR"], ["DÉFILEMENT", "2 DOIGTS"], ["ZOOM", "2 MAINS"], ["PAUSE", "POING"]];
+  const y = H - 52, step = (W - 48) / items.length;
+  items.forEach(([name, how], i) => {
+    const x = 24 + step * i + step / 2, on = gesture === name;
+    text(how, x, y, 8, on ? C.ice : C.dim, { align: "center", spacing: 1, alpha: on ? 1 : .7 });
+    line(x - 18, y + 9, x + 18, y + 9, on ? C.ion : C.steel, on ? 2 : 1, on ? 1 : .6);
+  });
+}
+
+function glitch(now) {                                         // petite coupure RGB à chaque changement d'étape
+  const k = 1 - clamp((now - glitchT) / 280); if (k <= 0) return;
+  ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = k * .5;
+  for (let i = 0; i < 6; i++) { const y = Math.random() * H, h = 4 + Math.random() * 16; ctx.drawImage(cv, 0, y * dpr, W * dpr, h * dpr, (Math.random() - .5) * 18 * k, y, W, h); }
+  ctx.restore();
+}
+
+requestAnimationFrame(loop);
+init();
+if (Q.has("test")) window.__t = code => eval(code);        // (tests visuels uniquement)
+</script>
+</body>
+</html>

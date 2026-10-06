@@ -1,0 +1,8 @@
+# IA locale de Jarvis (installer_ia_locale.bat)
+faster-whisper>=1.2
+ctranslate2>=4.6
+piper-tts>=1.3
+onnxruntime>=1.22
+# Whisper sur la carte graphique NVIDIA (sinon il tourne sur le processeur)
+nvidia-cublas-cu12
+nvidia-cudnn-cu12>=9,<10
