@@ -484,7 +484,8 @@ class Workspace:
         local = getattr(llm, "local", False)
         hybrid = getattr(self.brain, "strong", None) is not None
         ia = (f"{model.split(':')[0].upper().replace('QWEN', 'QWEN ')} · {'HYBRIDE' if hybrid else 'LOCAL'}" if local
-              else f"{(model or 'GEMINI').upper()}")
+              else f"{(model or 'gemini').replace('gemini-', 'GEMINI ').replace('-latest', '').upper()}"
+                   f"{' · HYBRIDE' if hybrid else ''}")
         user = getattr(self.brain, "user", "") or "Monsieur"
         return {**self.state, "mode": mode, "level": round(float(level), 3), "status": status, "sub": sub,
                 "log": list(LOG)[-30:], "agenda": self.agenda.upcoming(), "user": user, "ia": ia,

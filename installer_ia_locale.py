@@ -98,8 +98,8 @@ def main() -> int:
     txt = envf.read_text(encoding="utf-8") if envf.is_file() else ""
     if "JARVIS_IA=" not in txt:
         with envf.open("a", encoding="utf-8") as f:
-            f.write("\n# Cerveau : local (100 % sur le PC) | hybride (local + Gemini gratuit pour les gros travaux) | gemini\n"
-                    f"JARVIS_IA={'hybride' if 'GEMINI_API_KEY=' in txt and 'GEMINI_API_KEY=\n' not in txt else 'local'}\n")
+            f.write("\n# Cerveau : hybride (Gemini d'abord, IA locale en secours) | local (local d'abord) | local_seul | gemini\n"
+                    "JARVIS_IA=hybride\n")
     print("\nTout est prêt : Jarvis utilise maintenant son IA LOCALE (gratuite, sans quota).")
     return 0
 

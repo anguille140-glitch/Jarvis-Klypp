@@ -98,7 +98,7 @@ class Voice:
     def __init__(self) -> None:
         # elevenlabs | piper (locale) | windows ; en IA locale : piper par défaut
         mode_ia = _env("JARVIS_IA", "hybride" if _env("GEMINI_API_KEY") else "local").lower()
-        default = "piper" if mode_ia in ("local", "locale") else "elevenlabs"
+        default = "piper" if mode_ia in ("local_seul",) or not _env("ELEVENLABS_API_KEY") else "elevenlabs"
         self.mode = _env("JARVIS_VOIX_REPONSES", default).lower()
         self.piper = None
         self.lock = threading.Lock()
@@ -1489,9 +1489,11 @@ MUSIC_CMDS = [
     ("suivante", re.compile(r"^(?:musique |chanson )?suivante$|^(?:passe|mets?|zappe)(?: a)? (?:la )?"
                             r"(?:musique |chanson )?suivante$|^(?:change|zappe|passe)(?: de)? " + _MUS + r"$")),
 ]
-PLAN_RE = re.compile(r"^(?:tu peux |peux tu )?(ouvre|ouvrir|lance|lancer|affiche|afficher|montre|montrer|active|"
-                     r"activer|deploie|ferme|fermer|quitte|quitter|cache|cacher|enleve|eteins)(?: moi)?"
-                     r"(?: le| mon| ton| la)? (?:plan|poste|espace|bureau|table) de (?:travail|taf)$")
+PLAN_RE = re.compile(r"^(?:tu peux |peux tu |est ce que tu peux |vas y )?(ouvre|ouvres|ouvrir|lance|lances|lancer|"
+                     r"affiche|afficher|montre|montrer|active|activer|deploie|mets|met|ferme|fermes|fermer|quitte|"
+                     r"quitter|cache|cacher|enleve|eteins|retire)(?: moi| nous)?(?: le| les| mon| ton| la| l| un)? ?"
+                     r"(?:plans?|plants?|plan d|poste|postes|espace|bureau|table|mode) (?:de |d )?(?:travai\w*|taf|boulot)"
+                     r"(?: s il te plait| stp| merci| jarvis)?$")
 STOP_ALL_RE = re.compile(r"\b(stop total|stop tout|stoppe tout|arret d urgence|arrete tout|arrete toi tout de suite|"
                          r"urgence stop|coupe tout)\b")
 QUICK_MIN_SCORE = 0.88      # sûr à 88 % du nom de l'appli : sinon on laisse Gemini comprendre
@@ -1530,7 +1532,8 @@ class Brain:
         self.ears = ears                       # Whisper (IA locale), sinon None
         self.turns: list[list[dict]] = []      # historique, par échange
         if actions.skills is not None:
-            actions.improver = actions.auto.Improver(gemini, actions.skills, actions.memory, user)
+            learner = strong if getattr(strong, "local", False) else gemini     # auto-amélioration : local = sans quota
+            actions.improver = actions.auto.Improver(learner, actions.skills, actions.memory, user)
             actions.improver.start()           # s'améliore tout seul quand tu ne t'en sers pas
 
     def _system(self, sure: bool) -> dict:
@@ -1597,7 +1600,8 @@ class Brain:
             out = self.actions.do_plan_de_travail("ouvrir" if ouvrir else "fermer")
             log.info("Voie express (plan de travail) : %s -> %s", heard, out)
             self.voice.say(("Plan de travail en cours de déploiement." if ouvrir else "Plan de travail fermé.")
-                           if out.startswith("OK") else "Je n'arrive pas à ouvrir le plan de travail.")
+                           if out.startswith("OK") else "Je n'arrive pas à ouvrir le plan de travail : "
+                           + out.replace("ÉCHEC :", "").strip() + ".")
             return True
         for action, rx in MUSIC_CMDS:
             if rx.match(text):
@@ -1788,8 +1792,11 @@ class Brain:
             if fallback_text:                           # Gemini indisponible : on garde la réponse locale
                 self.voice.say(fallback_text)
                 return True
-            if llm is self.gemini and self.strong is not None and not self.voice.stale():
-                log.info("IA locale en panne : Gemini prend le relais.")
+            auth = msg[:3] in ("401", "403") or ("400" == msg[:3] and "key" in msg.lower())
+            if llm is self.gemini and self.strong is not None and not self.voice.stale() and not auth:
+                log.info("%s indisponible : %s prend le relais.",
+                         "IA locale" if getattr(llm, "local", False) else "Gemini",
+                         "IA locale" if getattr(self.strong, "local", False) else "Gemini")
                 return self.handle(wav, heard, sure, llm=self.strong)
             if getattr(llm, "local", False):
                 if msg.startswith("404"):
@@ -1814,8 +1821,8 @@ class Brain:
             log.info("(message ignoré : pas pour Jarvis)")
             return False
         failed = bool(trace) and all(t["resultat"].startswith("ÉCHEC") for t in trace)
-        if (llm is self.gemini and self.strong is not None and not self.voice.stale()
-                and (CANT_RE.search(norm(final_text)) or failed)):
+        if (llm is self.gemini and self.strong is not None and getattr(llm, "local", False)
+                and not self.voice.stale() and (CANT_RE.search(norm(final_text)) or failed)):
             # l'IA locale dit qu'elle ne peut pas (ou tout a échoué) : Gemini, plus fort, réessaie
             log.info("IA locale bloquée (« %s ») : Gemini reprend la demande.", final_text[:80])
             return self.handle(wav, heard, sure, llm=self.strong, fallback_text=final_text or "Je n'y arrive pas.")
@@ -2244,36 +2251,85 @@ def _shutdown(voice: "Voice", status) -> int:
     return STOP_EXIT
 
 
+class Fallback:
+    """Pour les travaux de Jarvis (créations, code, recherche, écran) : Gemini d'abord ; s'il n'a plus de quota,
+    est surchargé ou injoignable, l'IA locale prend le relais (même méthode generate)."""
+
+    def __init__(self, primary, backup) -> None:
+        self.primary, self.backup = primary, backup
+        self.accepts_audio = getattr(primary, "accepts_audio", True)
+        self.local = False
+
+    def __getattr__(self, name):
+        return getattr(self.primary, name)
+
+    def generate(self, body: dict, **kw) -> dict:
+        try:
+            return self.primary.generate(body, **kw)
+        except GeminiError as e:
+            msg = str(e)
+            if msg[:3] in ("400", "401", "403") and "key" in msg.lower():
+                raise
+            log.info("Gemini indisponible (%s) : l'IA locale prend le relais.", msg[:60])
+            return self.backup.generate(body, **kw)
+
+
+def _migrate_local_setting() -> None:
+    """L'installateur avait écrit JARVIS_IA=local : on passe en hybride (Gemini d'abord), une seule fois."""
+    flag = BASE / ".cache" / "ia_hybride_ok"
+    envf = BASE / ".env"
+    if flag.is_file() or not _env("GEMINI_API_KEY") or _env("JARVIS_IA").lower() != "local":
+        return
+    try:
+        txt = envf.read_text(encoding="utf-8")
+        envf.write_text(re.sub(r"(?m)^JARVIS_IA=local\s*$", "JARVIS_IA=hybride", txt), encoding="utf-8")
+        flag.parent.mkdir(parents=True, exist_ok=True)
+        flag.write_text("ok", encoding="utf-8")
+        os.environ["JARVIS_IA"] = "hybride"
+        log.info("Réglage IA : JARVIS_IA=local -> hybride (Gemini d'abord, IA locale en secours).")
+    except OSError:
+        pass
+
+
 def pick_ai(status):
-    """Choisit le cerveau : IA locale (Ollama), Gemini gratuit, ou les deux (hybride).
-    Renvoie (cerveau, cerveau des gros travaux, transcripteur Whisper ou None)."""
+    """Choisit le cerveau. Renvoie (cerveau principal, cerveau des travaux, transcripteur Whisper, cerveau de secours).
+    JARVIS_IA :
+      hybride (défaut)  Gemini d'abord (comprend ta voix directement) ; IA locale si quota épuisé / hors ligne
+      local             IA locale d'abord ; Gemini reprend quand elle n'y arrive pas
+      local_seul        100 % IA locale          gemini   100 % Gemini"""
+    _migrate_local_setting()
     key = _env("GEMINI_API_KEY")
-    mode = _env("JARVIS_IA", "hybride" if key else "local").lower()   # défaut : hybride si clé Gemini
+    mode = _env("JARVIS_IA", "hybride" if key else "local").lower().replace("é", "e")
     gemini = Gemini(key) if key else None
-    if mode in ("local", "hybride", "locale"):
+    llm = None
+    if mode in ("hybride", "local", "locale", "local_seul") or not gemini:
         import local_ai
         if local_ai.start_ollama():
             llm = local_ai.LocalLLM()
             have = local_ai.ollama_models()
-            if have and not any(m.split(":")[0] == llm.model.split(":")[0] and
-                                (m == llm.model or m.startswith(llm.model)) for m in have):
+            if have and not any(m == llm.model or m.startswith(llm.model) for m in have):
                 log.warning("Modèle %s pas encore téléchargé : lance installer_ia_locale.bat.", llm.model)
-            heavy = gemini if (mode == "hybride" and gemini) else llm
-            log.info("Cerveau : IA LOCALE (%s)%s.", llm.model,
-                     " + Gemini gratuit en renfort (gros travaux, et quand le local n'y arrive pas)"
-                     if heavy is gemini else ", 100 % sur ton PC")
-            return llm, heavy, local_ai.Transcriber()
-        log.warning("Ollama ne répond pas (installe-le avec installer_ia_locale.bat).")
-        if not gemini:
-            status("idle", "IA LOCALE ABSENTE : INSTALLER_IA_LOCALE.BAT")
-            return None, None, None
-        log.warning("En attendant : je passe sur Gemini gratuit.")
-    if not gemini:
-        log.error("GEMINI_API_KEY manquante dans .env : lance configurer_gemini.bat (ou passe en IA locale).")
-        status("idle", "CLÉ GEMINI MANQUANTE")
-        return None, None, None
-    log.info("Cerveau : Gemini (gratuit, en ligne).")
-    return gemini, gemini, None
+        else:
+            log.warning("IA locale (Ollama) indisponible%s.", " : Gemini seul" if gemini else "")
+    ears = None
+    if llm is not None:
+        import local_ai
+        ears = local_ai.Transcriber()
+    if gemini and llm and mode == "hybride":
+        log.info("Cerveau : HYBRIDE — Gemini d'abord, IA locale (%s) en secours (quota, coupure internet).", llm.model)
+        return gemini, Fallback(gemini, llm), ears, llm
+    if gemini and llm and mode in ("local", "locale"):
+        log.info("Cerveau : IA locale (%s) d'abord, Gemini quand elle n'y arrive pas.", llm.model)
+        return llm, Fallback(gemini, llm), ears, gemini
+    if llm and (mode == "local_seul" or not gemini):
+        log.info("Cerveau : 100 %% IA locale (%s).", llm.model)
+        return llm, llm, ears, None
+    if gemini:
+        log.info("Cerveau : Gemini (gratuit, en ligne).")
+        return gemini, gemini, None, None
+    log.error("Aucune IA : ajoute GEMINI_API_KEY (configurer_gemini.bat) ou installe l'IA locale.")
+    status("idle", "AUCUNE IA : CONFIGURER_GEMINI.BAT")
+    return None, None, None, None
 
 
 def run(device: int, rate: int, user: str = "Monsieur", clap_factory=None, rms=None, ui=None) -> int:
@@ -2282,15 +2338,14 @@ def run(device: int, rate: int, user: str = "Monsieur", clap_factory=None, rms=N
         if ui:
             ui.set_state(mode, text)
 
-    brain_llm, heavy_llm, ears = pick_ai(status)
+    brain_llm, heavy_llm, ears, backup_llm = pick_ai(status)
     if brain_llm is None:
         return 1
     voice = Voice()
     voice.ui = ui
     if ears is not None:
         ears.warm()                                       # charge Whisper pendant que tu parles d'autre chose
-    brain = Brain(brain_llm, Actions(voice, heavy_llm, user), voice, user, ears,
-                  strong=heavy_llm if heavy_llm is not brain_llm else None)
+    brain = Brain(brain_llm, Actions(voice, heavy_llm, user), voice, user, ears, strong=backup_llm)
     try:
         ear = Ear(device, rate, clap_factory, rms, voice.speaking)
     except ImportError:
