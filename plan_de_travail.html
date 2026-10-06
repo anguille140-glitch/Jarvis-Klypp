@@ -51,6 +51,11 @@ button { font: inherit; color: inherit; }
 /* ---------- chargement : globe ---------- */
 #boot { position: fixed; inset: 0; z-index: 50; background: radial-gradient(ellipse at 50% 48%, #04122a, #01040a 70%); cursor: pointer; overflow: hidden; }
 #boot canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+#boot #map { inset: -35% -25%; width: 150%; height: 170%; transform-origin: 50% 50%; will-change: transform;
+  -webkit-mask-image: radial-gradient(ellipse 34% 32% at 50% 50%, #000 40%, transparent 100%); mask-image: radial-gradient(ellipse 34% 32% at 50% 50%, #000 40%, transparent 100%); }
+#boot .term, #boot .hudr, #boot .lock, #boot .osm, #boot .skip { z-index: 2; }
+#boot::after { content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 1;
+  background: repeating-linear-gradient(0deg, rgba(79, 216, 255, .035) 0 1px, transparent 1px 3px), radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, .7)); }
 #boot .term { position: absolute; left: clamp(16px, 4vw, 48px); top: clamp(16px, 5vh, 56px); font: 12px/1.75 var(--f-data); color: var(--arc); text-shadow: 0 0 8px rgba(79, 216, 255, .7); white-space: pre; }
 #boot .hudr { position: absolute; right: clamp(16px, 4vw, 48px); top: clamp(16px, 5vh, 56px); text-align: right; font: 12px/1.75 var(--f-data); color: var(--ink-dim); letter-spacing: .12em; }
 #boot .hudr b { color: var(--ink); font-weight: 500; font-variant-numeric: tabular-nums; }
@@ -267,6 +272,7 @@ button { font: inherit; color: inherit; }
 <div id="boot" role="button" tabindex="0" aria-label="Passer l'animation de chargement">
   <canvas id="globe"></canvas>
   <canvas id="map"></canvas>
+  <canvas id="fx"></canvas>
   <div class="term" id="term"></div>
   <div class="hudr">
     <div>LAT <b id="hLat">--</b></div>
@@ -543,61 +549,453 @@ function drawGlobeOn(g, W, H, cx, cy, R, l0, p0, opt) {
   g.restore();
 }
 
-/* ================= chargement : le globe tourne, ralentit, zoome ================= */
-const boot = $("#boot"), gc = $("#globe"), g = gc.getContext("2d"), mc = $("#map"), m = mc.getContext("2d");
-let bootStart = 0, bootDone = false, target = { lat: 46.5, lon: 2.5 }, fine1 = [], fine2 = [];
-const T_SPIN = 7.4, T_MAP = 6.9, T_LOCK = 9.3, T_END = 10.6;
+/* ================= chargement : étoiles, globe, plongée, carte holographique ================= */
+const boot = $("#boot"), gc = $("#globe"), g = gc.getContext("2d"), mc = $("#map"), m = mc.getContext("2d"), fc = $("#fx"), f = fc.getContext("2d");
+let bootStart = 0, bootDone = false, target = { lat: 46.5, lon: 2.5 }, fine1 = [], fine2 = [], lastNow = 0;
+const T_SPIN = 7.4, T_ATMO = 5.5, T_MAP = 6.9, T_TILT = 8.3, T_LOCK = 10, T_END = 12.6;
 const BOOT_LINES = ["> INITIALISATION DU PLAN DE TRAVAIL", "> MODULES ......................... OK", "> LIAISON NEURONALE ................. OK",
-  "> LIAISON SATELLITE ................. 7/7", "> TRIANGULATION DE LA POSITION ....", "> CARTOGRAPHIE ORBITALE ............ OK", "> DESCENTE EN APPROCHE .............", "> CIBLE VERROUILLÉE"];
-// tuiles de carte (servies et gardées par Jarvis ; absentes dans l'aperçu)
-const tiles = new Map();
+  "> LIAISON SATELLITE ................. 7/7", "> TRIANGULATION DE LA POSITION ....", "> ENTRÉE ATMOSPHÉRIQUE ............ OK", "> RECONSTRUCTION HOLOGRAPHIQUE ....", "> CIBLE VERROUILLÉE"];
+const LINE_AT = [0, 1.1, 2.2, 3.3, 4.4, 5.6, 7.1, T_LOCK];
+
+/* ---------- bruitages (fabriqués en direct, aucun fichier) ---------- */
+const SFX = (() => {
+  let ac = null, out = null, rev = null, nbuf = null, drone = null, wind = null, vol = .6, nextBeep = 0;
+  const ok = () => ac && ac.state === "running" && vol > 0;
+  function init(v) {
+    vol = clamp((v ?? 60) / 100, 0, 1);
+    if (ac || vol <= 0) return;
+    try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
+    const comp = ac.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 5; comp.connect(ac.destination);
+    out = ac.createGain(); out.gain.value = vol; out.connect(comp);
+    const len = ac.sampleRate * 2.6 | 0, ir = ac.createBuffer(2, len, ac.sampleRate);   // réverbe « grande salle »
+    for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2); }
+    const conv = ac.createConvolver(); conv.buffer = ir; rev = ac.createGain(); rev.gain.value = .5; rev.connect(conv); conv.connect(out);
+    nbuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate); const nd = nbuf.getChannelData(0);
+    for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+    const wake = () => ac && ac.state !== "running" && ac.resume();
+    addEventListener("pointerdown", wake); addEventListener("keydown", wake);
+    ac.resume && ac.resume();
+  }
+  function bus(wet) { const n = ac.createGain(); n.connect(out); if (wet) { const s = ac.createGain(); s.gain.value = wet; n.connect(s); s.connect(rev); } return n; }
+  function env(node, t0, a, peak, dur) {
+    node.gain.setValueAtTime(0.0001, t0); node.gain.exponentialRampToValueAtTime(peak, t0 + a);
+    node.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  }
+  function tone(type, f0, f1, dur, peak, at = 0, wet = .3, lp = 0) {
+    if (!ok()) return;
+    const t0 = ac.currentTime + at, o = ac.createOscillator(), gn = ac.createGain();
+    o.type = type; o.frequency.setValueAtTime(f0, t0); if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, t0 + dur);
+    let last = o;
+    if (lp) { const fl = ac.createBiquadFilter(); fl.type = "lowpass"; fl.frequency.value = lp; o.connect(fl); last = fl; }
+    last.connect(gn); gn.connect(bus(wet)); env(gn, t0, Math.min(.02, dur / 4), peak, dur);
+    o.start(t0); o.stop(t0 + dur + .05);
+  }
+  function noise(kind, f0, f1, q, dur, peak, at = 0, wet = .3, attack = .05) {
+    if (!ok()) return;
+    const t0 = ac.currentTime + at, s = ac.createBufferSource(), fl = ac.createBiquadFilter(), gn = ac.createGain();
+    s.buffer = nbuf; s.loop = true; fl.type = kind; fl.Q.value = q;
+    fl.frequency.setValueAtTime(f0, t0); fl.frequency.exponentialRampToValueAtTime(f1, t0 + dur);
+    s.connect(fl); fl.connect(gn); gn.connect(bus(wet)); env(gn, t0, attack, peak, dur);
+    s.start(t0); s.stop(t0 + dur + .05);
+  }
+  function loops() {                                   // ronronnement des moteurs + souffle de la descente
+    if (!ok() || drone) return;
+    const t0 = ac.currentTime, fl = ac.createBiquadFilter(), gn = ac.createGain(), oscs = [];
+    fl.type = "lowpass"; fl.frequency.value = 300; fl.Q.value = 7;
+    for (const [type, fr, det] of [["sawtooth", 55, 0], ["sawtooth", 55, 9], ["sine", 27.5, 0], ["triangle", 110, -6]]) {
+      const o = ac.createOscillator(); o.type = type; o.frequency.value = fr; o.detune.value = det; o.connect(fl); o.start(t0); oscs.push(o);
+    }
+    gn.gain.setValueAtTime(0.0001, t0); gn.gain.exponentialRampToValueAtTime(.16, t0 + 1.2);
+    fl.connect(gn); gn.connect(bus(.25)); drone = { oscs, fl, gn };
+    const s = ac.createBufferSource(), wf = ac.createBiquadFilter(), wg = ac.createGain();
+    s.buffer = nbuf; s.loop = true; wf.type = "bandpass"; wf.Q.value = .9; wf.frequency.value = 400; wg.gain.value = 0;
+    s.connect(wf); wf.connect(wg); wg.connect(bus(.15)); s.start(t0); wind = { s, wf, wg };
+  }
+  function update(t, spd, warp, alt) {
+    if (!ok()) return;
+    if (!drone && t < T_LOCK - 1) loops();              // le son a pu être débloqué en cours de route
+    const now = ac.currentTime;
+    if (drone) {
+      drone.fl.frequency.setTargetAtTime(160 + 2400 * spd + 500 * warp, now, .08);
+      drone.oscs[0].frequency.setTargetAtTime(55 * (1 + .45 * spd), now, .1);
+      drone.oscs[1].frequency.setTargetAtTime(55 * (1 + .45 * spd), now, .1);
+      if (t > T_LOCK) drone.gn.gain.setTargetAtTime(.05, now, .6);
+    }
+    if (wind) {
+      wind.wf.frequency.setTargetAtTime(300 + 2600 * warp, now, .1);
+      wind.wg.gain.setTargetAtTime(t < T_LOCK ? .5 * warp : 0, now, .12);
+    }
+    if (t > 2.4 && t < T_LOCK && now >= nextBeep) {    // altimètre : bips de plus en plus rapprochés
+      tone("sine", 1975, 1975, .05, .045, 0, .2);
+      nextBeep = now + clamp(.08 + .1 * Math.log10(Math.max(alt, .3) + 1), .08, .55);
+    }
+  }
+  return {
+    init, loops, update,
+    powerUp() { tone("sine", 45, 190, 1.8, .55, 0, .25); tone("triangle", 180, 1100, 1.3, .1, .15, .6); noise("highpass", 600, 5000, .7, 1.5, .12, .1, .4, .6); },
+    blip() { const fr = 1400 + Math.random() * 900; tone("square", fr, fr, .045, .035, 0, .45, 4000); tone("square", fr * 1.5, fr * 1.5, .04, .025, .06, .45, 4000); },
+    atmo() { noise("bandpass", 4200, 220, 1.1, 2.1, .7, 0, .3, .5); tone("sine", 75, 32, 1.9, .55, .2, .2); noise("lowpass", 900, 120, .8, 1.6, .35, .3, .2, .3); },
+    mapIn() {
+      for (let i = 0; i < 9; i++) tone("sine", 600 * Math.pow(1.19, i), 600 * Math.pow(1.19, i), .07, .06, i * .055, .6);
+      noise("highpass", 3000, 9000, .5, .9, .1, 0, .6, .05); tone("sine", 140, 60, .6, .35, 0, .3);
+    },
+    ping() { tone("sine", 2637, 2637, .35, .06, 0, .8); tone("sine", 3951, 3951, .25, .025, .04, .8); },
+    servo() { tone("sawtooth", 95, 150, 1.5, .07, 0, .15, 700); tone("sawtooth", 96, 151, 1.5, .05, 0, .15, 700); noise("bandpass", 600, 900, 4, 1.4, .05, 0, .1, .3); },
+    lock() {
+      tone("sine", 130, 36, 1.1, .95, 0, .3); noise("lowpass", 4000, 150, .7, .45, .55, 0, .3, .005);
+      tone("triangle", 1318.5, 1318.5, 1.8, .16, .08, .75); tone("triangle", 1975.5, 1975.5, 2, .13, .2, .75);
+      tone("sine", 2637, 2637, 2.4, .07, .34, .85); tone("sine", 659.25, 659.25, 2.2, .1, .08, .6);
+    },
+    tick() { const fr = 2800 + Math.random() * 1800; tone("square", fr, fr, .018, .025, 0, 0, 6000); },
+    exit() {
+      noise("highpass", 300, 7000, .7, 1, .3, 0, .4, .3); tone("sine", 260, 1040, .7, .07, 0, .6);
+      if (drone) { const now = ac.currentTime; drone.gn.gain.setTargetAtTime(.0001, now, .35); wind.wg.gain.setTargetAtTime(0, now, .2);
+        const d = drone, w = wind; setTimeout(() => { d.oscs.forEach((o) => o.stop()); w.s.stop(); }, 2500); drone = wind = null; }
+    },
+    reset() { nextBeep = 0; },
+  };
+})();
+
+/* ---------- décor : étoiles, nuages, satellites ---------- */
+const STARS = Array.from({ length: 760 }, () => ({ x: Math.random() * 2 - 1, y: Math.random() * 2 - 1, z: .05 + Math.random() * .95, b: .35 + Math.random() * .65, h: Math.random() }));
+const CLOUD = (() => {                                 // nuage doux, pré-dessiné une fois
+  const c = document.createElement("canvas"); c.width = c.height = 256; const x = c.getContext("2d");
+  for (let i = 0; i < 26; i++) {
+    const a = Math.random() * TAU, r = Math.random() * 70, X = 128 + Math.cos(a) * r, Y = 128 + Math.sin(a) * r * .6, R = 30 + Math.random() * 50;
+    const gr = x.createRadialGradient(X, Y, 0, X, Y, R); gr.addColorStop(0, "rgba(190,235,255,.20)"); gr.addColorStop(1, "rgba(190,235,255,0)");
+    x.fillStyle = gr; x.fillRect(0, 0, 256, 256);
+  }
+  return c;
+})();
+const PUFFS = Array.from({ length: 22 }, () => ({ a: Math.random() * TAU, ph: Math.random(), s: .6 + Math.random() * .9, sp: .8 + Math.random() * .5 }));
+const STREAKS = Array.from({ length: 140 }, () => ({ a: Math.random() * TAU, ph: Math.random(), l: .05 + Math.random() * .2, w: .5 + Math.random() * 1.5 }));
+let _fd = "";
+const FDATA = () => _fd || (_fd = getComputedStyle(document.body).getPropertyValue("--f-data").trim() || "monospace");
+const wrap = (v) => ((v + 1) % 2 + 2) % 2 - 1;
+
+function drawStars(W, H, dt, rot, warp, alpha, px) {
+  if (alpha <= 0) return;
+  const cx = W / 2, cy = H / 2, F = Math.max(W, H) * .42;
+  g.save(); g.globalCompositeOperation = "lighter"; g.lineCap = "round";
+  for (const s of STARS) {
+    s.z -= dt * (.012 + warp * .55);
+    if (s.z <= .03) { s.z = 1; s.x = Math.random() * 2 - 1; s.y = Math.random() * 2 - 1; }
+    const par = .25 + .75 * (1 - s.z), X0 = wrap(s.x - rot * .004 * par);
+    const X = cx + X0 / s.z * F, Y = cy + s.y / s.z * F;
+    if (X < -50 || Y < -50 || X > W + 50 || Y > H + 50) continue;
+    const a = alpha * s.b * clamp((1 - s.z) * 1.6, 0, 1), sz = (.6 + 1.8 * (1 - s.z)) * px;
+    const col = s.h < .15 ? "255,214,170" : s.h < .5 ? "200,236,255" : "235,248,255";
+    const tail = warp * .09 + Math.abs(rot) * 0;
+    if (tail > .004) {
+      const zt = Math.min(1.2, s.z + tail), X2 = cx + X0 / zt * F, Y2 = cy + s.y / zt * F;
+      g.strokeStyle = `rgba(${col},${a})`; g.lineWidth = sz; g.beginPath(); g.moveTo(X2, Y2); g.lineTo(X, Y); g.stroke();
+    } else { g.fillStyle = `rgba(${col},${a})`; g.fillRect(X - sz / 2, Y - sz / 2, sz, sz); }
+  }
+  g.restore();
+}
+function drawFlare(cx, cy, R, W, H, px, a) {           // lever de soleil derrière la Terre
+  if (a <= .01) return;
+  const sx = cx + R * .78, sy = cy - R * .66;
+  g.save(); g.globalCompositeOperation = "lighter"; g.globalAlpha = a;
+  let gr = g.createRadialGradient(sx, sy, 0, sx, sy, 160 * px);
+  gr.addColorStop(0, "rgba(255,255,255,.95)"); gr.addColorStop(.08, "rgba(190,240,255,.6)"); gr.addColorStop(1, "rgba(79,216,255,0)");
+  g.fillStyle = gr; g.beginPath(); g.arc(sx, sy, 160 * px, 0, TAU); g.fill();
+  g.save(); g.translate(sx, sy); g.scale(1, .025);         // traînée anamorphique
+  gr = g.createRadialGradient(0, 0, 0, 0, 0, W * .55); gr.addColorStop(0, "rgba(140,220,255,.7)"); gr.addColorStop(1, "rgba(79,216,255,0)");
+  g.fillStyle = gr; g.beginPath(); g.arc(0, 0, W * .55, 0, TAU); g.fill(); g.restore();
+  const dx = W / 2 - sx, dy = H / 2 - sy;                  // reflets de l'objectif
+  for (const [k, r, c] of [[.6, 26, "79,216,255,.18"], [1.25, 60, "120,160,255,.10"], [1.6, 14, "160,255,220,.25"], [2.1, 90, "79,216,255,.06"]]) {
+    g.fillStyle = `rgba(${c})`; g.beginPath(); g.arc(sx + dx * k, sy + dy * k, r * px, 0, TAU); g.fill();
+  }
+  g.restore();
+}
+function drawOrbits(cx, cy, R, t, px, a) {               // satellites en orbite
+  if (a <= .01) return;
+  g.save(); g.globalAlpha = a; g.lineWidth = px;
+  [[1.32, .28, .5, .55], [1.48, .62, -.35, .38], [1.2, .12, 1.4, .8]].forEach(([k, tilt, rot, sp], i) => {
+    const rx = R * k, ry = R * k * tilt;
+    g.save(); g.translate(cx, cy); g.rotate(rot);
+    g.strokeStyle = "rgba(79,216,255,.16)"; g.setLineDash([2 * px, 7 * px]); g.beginPath(); g.ellipse(0, 0, rx, ry, 0, Math.PI, TAU); g.stroke();
+    g.strokeStyle = "rgba(79,216,255,.38)"; g.setLineDash([]); g.beginPath(); g.ellipse(0, 0, rx, ry, 0, 0, Math.PI); g.stroke();
+    const th = t * sp + i * 2;
+    for (let k2 = 0; k2 < 14; k2++) {
+      const tt = th - k2 * .03, X = Math.cos(tt) * rx, Y = Math.sin(tt) * ry;
+      if (Y < 0 && Math.hypot(X / R, Y / R) < 1) continue;       // derrière la Terre
+      g.fillStyle = `rgba(160,240,255,${(1 - k2 / 14) * .9})`; const s = (k2 ? 1.6 : 3.2) * px; g.fillRect(X - s / 2, Y - s / 2, s, s);
+    }
+    g.restore();
+  });
+  g.restore();
+}
+function drawAtmo(W, H, t, e, px) {                      // traversée des nuages + lignes de vitesse
+  if (e <= .01) return;
+  const cx = W / 2, cy = H / 2, M = Math.hypot(W, H) * .6;
+  g.save(); g.globalCompositeOperation = "lighter";
+  const haze = g.createRadialGradient(cx, cy, 0, cx, cy, M);
+  haze.addColorStop(0, `rgba(120,210,255,${.22 * e})`); haze.addColorStop(.6, `rgba(40,120,255,${.10 * e})`); haze.addColorStop(1, "rgba(0,0,0,0)");
+  g.fillStyle = haze; g.fillRect(0, 0, W, H);
+  for (const p of PUFFS) {
+    const q = (t * .55 * p.sp + p.ph) % 1, r = M * q * q * 1.3, s = (80 + 900 * q * q) * p.s * px;
+    g.globalAlpha = Math.sin(Math.PI * q) * e * .5;
+    g.save(); g.translate(cx + Math.cos(p.a) * r, cy + Math.sin(p.a) * r); g.rotate(p.a); g.scale(1 + 2.2 * q, .8);   // étirés par la vitesse
+    g.drawImage(CLOUD, -s / 2, -s / 2, s, s); g.restore();
+  }
+  g.globalAlpha = 1; g.lineCap = "round";
+  for (const s of STREAKS) {
+    const q = (t * 1.6 + s.ph) % 1, r0 = M * q * q, r1 = r0 + M * s.l * (.3 + q);
+    g.strokeStyle = `rgba(190,240,255,${.55 * e * Math.sin(Math.PI * q)})`; g.lineWidth = s.w * px;
+    g.beginPath(); g.moveTo(cx + Math.cos(s.a) * r0, cy + Math.sin(s.a) * r0); g.lineTo(cx + Math.cos(s.a) * r1, cy + Math.sin(s.a) * r1); g.stroke();
+  }
+  g.restore();
+}
+
+/* ---------- carte : tuiles transformées en hologramme ---------- */
+const tiles = new Map(), holoQueue = [];
 let mapOK = false;
 function tile(z, x, y) {
   const n = 1 << z; x = ((x % n) + n) % n;
   const k = z + "/" + x + "/" + y;
-  if (!tiles.has(k)) { const im = new Image(); im.onload = () => { im.ok = true; mapOK = true; }; im.src = `tuile/${k}.png`; tiles.set(k, im); }
+  if (!tiles.has(k)) { const im = new Image(); im.z = z; im.onload = () => holoQueue.push(im); im.src = `tuile/${k}.png`; tiles.set(k, im); }
   return tiles.get(k);
+}
+const HOLO = [[2, 14, 32, 215], [5, 52, 112, 235], [4, 46, 52, 225], [14, 78, 122, 245], [62, 176, 232, 235], [255, 166, 60, 245], [200, 244, 255, 255]];
+const EDGE = { 1: [70, 170, 255], 2: [50, 210, 170], 3: [110, 235, 255] };
+const HALO = document.createElement("canvas"); HALO.width = HALO.height = 64; const HALO_X = HALO.getContext("2d");
+function holoTile(im) {                                  // fond / eau / verdure / bâtiments / routes / grands axes / texte
+  const N = 256, c = document.createElement("canvas"); c.width = c.height = N;
+  const x = c.getContext("2d", { willReadFrequently: true });
+  x.drawImage(im, 0, 0, N, N);
+  let d; try { d = x.getImageData(0, 0, N, N); } catch (e) { return null; }
+  const p = d.data, cls = new Uint8Array(N * N);
+  for (let k = 0, i = 0; k < N * N; k++, i += 4) {
+    const r = p[i], gg = p[i + 1], bb = p[i + 2], mx = Math.max(r, gg, bb), mn = Math.min(r, gg, bb), l = (r + gg + bb) / 3;
+    cls[k] = l < 115 ? 6
+      : bb > r + 20 && bb >= gg - 4 ? 1
+      : gg > r + 6 && gg > bb + 4 ? 2
+      : mn > 246 ? 4
+      : (r > 225 && gg > 140 && bb < 175 && r - bb > 45) || (r > 200 && r - gg > 50) || (r > 235 && gg > 235 && bb < 215) ? 5
+      : mx - mn < 24 && l < 216 ? 3 : 0;
+  }
+  for (let k = 0, i = 0; k < N * N; k++, i += 4) {
+    const c0 = cls[k], col = HOLO[c0];
+    p[i] = col[0]; p[i + 1] = col[1]; p[i + 2] = col[2]; p[i + 3] = col[3];
+    const xx = k % N, yy = (k / N) | 0;
+    if (xx < N - 1 && yy < N - 1) {                    // contours lumineux (bâtiments, eau, forêts)
+      const cr = cls[k + 1], cd = cls[k + N];
+      const e = (c0 !== cr ? (EDGE[c0] ? c0 : EDGE[cr] ? cr : 0) : 0) || (c0 !== cd ? (EDGE[c0] ? c0 : EDGE[cd] ? cd : 0) : 0);
+      if (e) { const ec = EDGE[e]; p[i] = ec[0]; p[i + 1] = ec[1]; p[i + 2] = ec[2]; p[i + 3] = 255; }
+    }
+  }
+  x.putImageData(d, 0, 0);
+  const o = document.createElement("canvas"); o.width = o.height = N; const ox = o.getContext("2d");
+  ox.drawImage(c, 0, 0);
+  HALO_X.clearRect(0, 0, 64, 64); HALO_X.drawImage(c, 0, 0, 64, 64);       // halo : réduit puis agrandi = flou rapide
+  ox.globalCompositeOperation = "lighter"; ox.globalAlpha = .42; ox.imageSmoothingQuality = "high"; ox.drawImage(HALO, 0, 0, N, N);
+  return o;
+}
+function processHolo(ms, zNow) {                      // conversion étalée : quelques millisecondes par image
+  const t0 = performance.now();
+  while (holoQueue.length && performance.now() - t0 < ms) {
+    let best = 0;                                      // d'abord le niveau de zoom qui va s'afficher
+    for (let i = 1; i < holoQueue.length; i++) if (Math.abs(holoQueue[i].z - zNow) < Math.abs(holoQueue[best].z - zNow)) best = i;
+    const im = holoQueue.splice(best, 1)[0]; im.holo = holoTile(im) || im; im.ok = true; im.okAt = performance.now(); mapOK = true;
+  }
 }
 const lon2x = (lon, z) => (lon + 180) / 360 * 256 * (1 << z);
 const lat2y = (lat, z) => { const s = Math.sin(lat * D2R); return (.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * 256 * (1 << z); };
-function prefetch() { if (!LIVE) return; for (let z = 9; z <= 17; z++) { const cx = Math.floor(lon2x(target.lon, z) / 256), cy = Math.floor(lat2y(target.lat, z) / 256); for (let dx = -2; dx <= 2; dx++) for (let dy = -1; dy <= 1; dy++) tile(z, cx + dx, cy + dy); } }
-function drawMap(zf, alpha) {
-  const W = mc.width, H = mc.height;
+function prefetch() {
+  if (!LIVE) return;
+  for (let z = 9; z <= 17; z++) {
+    const cx = Math.floor(lon2x(target.lon, z) / 256), cy = Math.floor(lat2y(target.lat, z) / 256), sx = z >= 13 ? 3 : 2, sy = z >= 13 ? 2 : 1;
+    for (let dy = 0; dy <= sy; dy++) for (const s of [1, -1]) for (let dx = -sx; dx <= sx; dx++) if (dy || s > 0) tile(z, cx + dx, cy + dy * s);
+  }
+}
+let POIS = [];
+function makePois() {                                    // balises d'analyse autour de toi (décor)
+  let seed = Math.abs(Math.round(target.lat * 1e4) * 31 + Math.round(target.lon * 1e4)) || 7;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const names = ["RELAIS 07", "SECTEUR B-4", "NŒUD 12", "BALISE Δ3", "CAPTEUR 21", "ZONE C-9", "ANTENNE 5G"];
+  POIS = names.map((n, i) => ({ n, d: 140 + rnd() * 1300, a: (i / names.length) * TAU + rnd() * .7, at: T_TILT - .9 + i * .3 }));
+}
+function drawMap(t, zf, alpha, reveal, lockQ) {
+  const W = mc.width, H = mc.height, px = W / Math.max(1, mc.clientWidth), cx = W / 2, cy = H / 2;
   m.clearRect(0, 0, W, H);
-  if (!LIVE || alpha <= 0) return;
+  if (alpha <= 0) return;
   const z = Math.min(17, Math.floor(zf)), sc = Math.pow(2, zf - z);
-  const px = lon2x(target.lon, z), py = lat2y(target.lat, z);
-  const size = 256 * sc, x0 = W / 2 - px * sc, y0 = H / 2 - py * sc;
+  const tpx = lon2x(target.lon, z), tpy = lat2y(target.lat, z);
+  const size = 256 * sc, x0 = cx - tpx * sc, y0 = cy - tpy * sc;
+  const now = performance.now();
   m.save(); m.globalAlpha = alpha;
-  m.filter = "invert(1) hue-rotate(185deg) saturate(2) brightness(1.05) contrast(1.4)";
-  const tx0 = Math.floor(-x0 / size), ty0 = Math.floor(-y0 / size), tx1 = Math.floor((W - x0) / size), ty1 = Math.floor((H - y0) / size);
-  for (let tx = tx0; tx <= tx1; tx++) for (let ty = ty0; ty <= ty1; ty++) {
-    if (ty < 0 || ty >= (1 << z)) continue;
-    const im = tile(z, tx, ty);
-    if (im.ok) m.drawImage(im, x0 + tx * size, y0 + ty * size, size + 1, size + 1);
-    else {                                             // pas encore là : on étire le niveau du dessus
-      const n = 1 << (z - 1), ux = ((Math.floor(tx / 2) % n) + n) % n, uy = Math.floor(ty / 2);
-      const up = tiles.get(`${z - 1}/${ux}/${uy}`);
-      if (up && up.ok) m.drawImage(up, (((tx % 2) + 2) % 2) * 128, (ty % 2) * 128, 128, 128, x0 + tx * size, y0 + ty * size, size + 1, size + 1);
+  m.fillStyle = "rgb(1,9,22)"; m.fillRect(0, 0, W, H);
+  if (LIVE) {
+    const tx0 = Math.floor(-x0 / size), ty0 = Math.floor(-y0 / size), tx1 = Math.floor((W - x0) / size), ty1 = Math.floor((H - y0) / size);
+    for (let tx = tx0; tx <= tx1; tx++) for (let ty = ty0; ty <= ty1; ty++) {
+      if (ty < 0 || ty >= (1 << z)) continue;
+      const im = tile(z, tx, ty), X = x0 + tx * size, Y = y0 + ty * size, fade = im.ok ? clamp((now - im.okAt) / 450, 0, 1) : 0;
+      if (fade < 1) for (let k = 1; k <= 2; k++) {     // pas encore là : on étire un niveau du dessus
+        const zz = z - k, n = 1 << zz, d = 1 << k, ux = ((Math.floor(tx / d) % n) + n) % n, uy = Math.floor(ty / d);
+        const up = tiles.get(`${zz}/${ux}/${uy}`);
+        if (up && up.ok) { const s2 = 256 / d; m.drawImage(up.holo, (((tx % d) + d) % d) * s2, (((ty % d) + d) % d) * s2, s2, s2, X, Y, size + 1, size + 1); break; }
+      }
+      if (fade > 0) { m.globalAlpha = alpha * fade; m.drawImage(im.holo, X, Y, size + 1, size + 1); m.globalAlpha = alpha; }
     }
   }
-  m.filter = "none";
-  // teinte holographique + bord en fondu
-  m.globalCompositeOperation = "source-atop";
-  const tint = m.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.max(W, H) * .6);
-  tint.addColorStop(0, "rgba(79,216,255,.06)"); tint.addColorStop(1, "rgba(24,103,255,.22)");
-  m.fillStyle = tint; m.fillRect(0, 0, W, H);
-  m.globalCompositeOperation = "destination-in";
-  const mask = m.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .18, W / 2, H / 2, Math.max(W, H) * .58);
-  mask.addColorStop(0, "rgba(0,0,0,1)"); mask.addColorStop(1, "rgba(0,0,0,0)");
-  m.fillStyle = mask; m.fillRect(0, 0, W, H);
+  // quadrillage tactique accroché au sol
+  const step = size / 4;
+  m.lineWidth = px; m.strokeStyle = "rgba(79,216,255,.09)"; m.beginPath();
+  for (let x = ((x0 % step) + step) % step; x < W; x += step) { m.moveTo(x, 0); m.lineTo(x, H); }
+  for (let y = ((y0 % step) + step) % step; y < H; y += step) { m.moveTo(0, y); m.lineTo(W, y); }
+  m.stroke();
+  m.strokeStyle = "rgba(79,216,255,.2)"; m.beginPath();
+  for (let x = ((x0 % size) + size) % size; x < W; x += size) { m.moveTo(x, 0); m.lineTo(x, H); }
+  for (let y = ((y0 % size) + size) % size; y < H; y += size) { m.moveTo(0, y); m.lineTo(W, y); }
+  m.stroke();
+  // radar
+  const RR = 1000 * px, sw = t * 2.2;
+  const cg = m.createConicGradient(sw, cx, cy);
+  cg.addColorStop(0, "rgba(79,216,255,0)"); cg.addColorStop(.82, "rgba(79,216,255,0)"); cg.addColorStop(.995, "rgba(79,216,255,.17)"); cg.addColorStop(1, "rgba(79,216,255,0)");
+  m.fillStyle = cg; m.beginPath(); m.arc(cx, cy, RR, 0, TAU); m.fill();
+  m.strokeStyle = "rgba(140,235,255,.5)"; m.beginPath(); m.moveTo(cx, cy); m.lineTo(cx + Math.cos(sw) * RR, cy + Math.sin(sw) * RR); m.stroke();
+  // cercles de distance
+  const mpp = 156543.03 * Math.cos(target.lat * D2R) / Math.pow(2, zf);
+  m.font = `600 ${11 * px}px ${FDATA()}`;
+  m.textAlign = "left"; m.textBaseline = "middle";
+  for (const dm of [25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000]) {
+    const r = dm / mpp;
+    if (r < 70 * px || r > 1150 * px) continue;
+    const a = clamp(Math.min((r - 70 * px) / (60 * px), (1150 * px - r) / (200 * px)), 0, 1);
+    m.strokeStyle = `rgba(79,216,255,${.32 * a})`; m.setLineDash([6 * px, 6 * px]); m.beginPath(); m.arc(cx, cy, r, 0, TAU); m.stroke(); m.setLineDash([]);
+    m.fillStyle = `rgba(150,235,255,${.85 * a})`;
+    m.fillText(dm >= 1000 ? `${dm / 1000} KM` : `${dm} M`, cx + r * .707 + 6 * px, cy - r * .707);
+  }
+  // balises
+  for (const p of POIS) {
+    const q = clamp((t - p.at) / .45, 0, 1);
+    if (q <= 0) continue;
+    const r = p.d / mpp, X = cx + Math.cos(p.a) * r, Y = cy + Math.sin(p.a) * r;
+    if (r > 1300 * px) continue;
+    const s = 6 * px * easeOut(q, 3), pul = (t * 1.3 + p.a) % 1;
+    m.strokeStyle = `rgba(255,190,90,${.9 * q})`; m.fillStyle = `rgba(255,190,90,${.25 * q})`; m.lineWidth = 1.4 * px;
+    m.beginPath(); m.moveTo(X, Y - s); m.lineTo(X + s, Y); m.lineTo(X, Y + s); m.lineTo(X - s, Y); m.closePath(); m.fill(); m.stroke();
+    m.strokeStyle = `rgba(255,190,90,${.5 * (1 - pul) * q})`; m.beginPath(); m.arc(X, Y, s + 22 * px * pul, 0, TAU); m.stroke();
+    const lx = X + 34 * px, ly = Y - 30 * px;
+    m.strokeStyle = `rgba(255,190,90,${.6 * q})`; m.lineWidth = px; m.beginPath(); m.moveTo(X + s, Y - s * .3); m.lineTo(lx, ly); m.lineTo(lx + 92 * px * q, ly); m.stroke();
+    m.fillStyle = `rgba(255,220,170,${q})`; m.fillText(p.n.slice(0, Math.ceil(p.n.length * q)), lx + 2 * px, ly - 9 * px);
+    m.fillStyle = `rgba(255,190,90,${.7 * q})`; m.fillText(p.d >= 1000 ? `${(p.d / 1000).toFixed(2)} KM` : `${Math.round(p.d)} M`, lx + 2 * px, ly + 9 * px);
+  }
+  // ta position sur le sol
+  const col = lockQ > 0 ? "62,240,168" : "79,216,255";
+  for (let k = 0; k < 3; k++) {
+    const w = (t * .8 + k / 3) % 1;
+    m.strokeStyle = `rgba(${col},${.55 * (1 - w)})`; m.lineWidth = 2 * px; m.beginPath(); m.arc(cx, cy, (14 + w * 90) * px, 0, TAU); m.stroke();
+  }
+  m.fillStyle = `rgba(${col},.9)`; m.beginPath(); m.arc(cx, cy, 5 * px, 0, TAU); m.fill();
+  if (lockQ > 0 && lockQ < 1) {                         // onde de choc hexagonale au verrouillage
+    const R = lockQ * 1500 * px; m.strokeStyle = `rgba(62,240,168,${1 - lockQ})`; m.lineWidth = (5 * (1 - lockQ) + 1) * px;
+    m.beginPath(); for (let k = 0; k <= 6; k++) { const a = k * TAU / 6 + Math.PI / 6; k ? m.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R) : m.moveTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); } m.stroke();
+    m.strokeStyle = `rgba(62,240,168,${.5 * (1 - lockQ)})`; m.beginPath(); m.arc(cx, cy, R * .62, 0, TAU); m.stroke();
+  }
   m.restore();
-  $("#osm").style.opacity = mapOK ? .9 : 0;
+  // balayage de reconstruction (la carte apparaît ligne par ligne)
+  if (reveal < 1) {
+    const top = H * .2, bot = H * .8, fy = top + (bot - top + 120 * px) * reveal;
+    m.save(); m.globalCompositeOperation = "destination-in";
+    const gm = m.createLinearGradient(0, fy - 90 * px, 0, fy);
+    gm.addColorStop(0, "rgba(0,0,0,1)"); gm.addColorStop(1, "rgba(0,0,0,0)");
+    m.fillStyle = gm; m.fillRect(0, 0, W, H); m.restore();
+    m.save(); m.globalCompositeOperation = "lighter";
+    const gl = m.createLinearGradient(0, fy - 40 * px, 0, fy + 4 * px);
+    gl.addColorStop(0, "rgba(79,216,255,0)"); gl.addColorStop(.85, "rgba(79,216,255,.35)"); gl.addColorStop(1, "rgba(220,250,255,.95)");
+    m.fillStyle = gl; m.fillRect(0, fy - 40 * px, W, 44 * px); m.restore();
+  }
+  $("#osm").style.opacity = mapOK && LIVE ? .9 : 0;
 }
+
+/* ---------- HUD de l'écran : réticule, règles, colonne de lumière, éclairs ---------- */
+function drawFx(t, o) {
+  const W = fc.width, H = fc.height, px = W / Math.max(1, fc.clientWidth), cx = W / 2, cy = H / 2;
+  f.clearRect(0, 0, W, H);
+  const { lock, done, tp, lonC, altKm, mapA } = o;
+  const col = done ? "62,240,168" : "79,216,255";
+  f.save(); f.lineWidth = 1.5 * px; f.shadowColor = `rgb(${col})`; f.shadowBlur = 10 * px;
+  // réticule (s'efface quand la carte s'incline : le sol prend le relais)
+  const ra = 1 - .75 * tp, ring = (58 - 30 * lock) * px, spin = t * .9 * (1 - lock);
+  f.strokeStyle = `rgba(${col},${.9 * ra})`;
+  f.beginPath(); f.arc(cx, cy, ring, 0, TAU); f.stroke();
+  for (let k = 0; k < 4; k++) { const a = spin + k * Math.PI / 2; f.beginPath(); f.arc(cx, cy, ring * 1.55, a + .2, a + Math.PI / 2 - .2); f.stroke(); }
+  f.lineWidth = px; f.shadowBlur = 0;
+  for (let k = 0; k < 48; k++) {
+    const a = -spin * .6 + k * TAU / 48, r1 = ring * 1.85, r2 = r1 + (k % 4 ? 4 : 10) * px;
+    f.strokeStyle = `rgba(${col},${(k % 4 ? .35 : .7) * ra})`; f.beginPath(); f.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1); f.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2); f.stroke();
+  }
+  f.globalAlpha = .3 * ra; f.strokeStyle = `rgb(${col})`; f.setLineDash([4 * px, 6 * px]);
+  f.beginPath(); f.moveTo(0, cy); f.lineTo(cx - ring * 2.4, cy); f.moveTo(cx + ring * 2.4, cy); f.lineTo(W, cy);
+  f.moveTo(cx, 0); f.lineTo(cx, cy - ring * 2.4); f.moveTo(cx, cy + ring * 2.4); f.lineTo(cx, H); f.stroke();
+  f.setLineDash([]); f.globalAlpha = 1;
+  // crochets de verrouillage qui se referment
+  const B = (240 - 170 * easeOut(lock, 3)) * px, L = 24 * px;
+  f.strokeStyle = `rgba(${col},${clamp((t - T_TILT) / .6, 0, 1)})`; f.lineWidth = 2 * px; f.shadowBlur = 12 * px;
+  for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+    f.beginPath(); f.moveTo(cx + sx * B, cy + sy * (B - L)); f.lineTo(cx + sx * B, cy + sy * B); f.lineTo(cx + sx * (B - L), cy + sy * B); f.stroke();
+  }
+  f.restore();
+  // colonne de lumière sur ta position
+  if (t > T_LOCK - .15) {
+    const q = clamp((t - T_LOCK + .15) / .7, 0, 1), h = H * .46 * easeOut(q, 3), pw = 26 * px;
+    f.save(); f.globalCompositeOperation = "lighter";
+    let gr = f.createLinearGradient(0, cy, 0, cy - h);
+    gr.addColorStop(0, "rgba(120,255,200,.55)"); gr.addColorStop(1, "rgba(62,240,168,0)");
+    f.fillStyle = gr; f.fillRect(cx - pw, cy - h, pw * 2, h);
+    gr = f.createLinearGradient(0, cy, 0, cy - h); gr.addColorStop(0, "rgba(235,255,245,1)"); gr.addColorStop(1, "rgba(160,255,220,0)");
+    f.fillStyle = gr; f.fillRect(cx - 1.5 * px, cy - h, 3 * px, h);
+    const bl = f.createRadialGradient(cx, cy, 0, cx, cy, 90 * px); bl.addColorStop(0, "rgba(160,255,220,.7)"); bl.addColorStop(1, "rgba(62,240,168,0)");
+    f.save(); f.translate(cx, cy); f.scale(1, .4 + .6 * (1 - tp)); f.fillStyle = bl; f.beginPath(); f.arc(0, 0, 90 * px, 0, TAU); f.fill(); f.restore();
+    for (let k = 0; k < 46; k++) {                       // particules qui montent
+      const sp = .5 + (k * 37 % 11) / 11, yy = ((t * 140 * sp + k * 53) % (h + 1)), xx = Math.sin(k * 12.9 + t * 2) * pw * .8;
+      f.fillStyle = `rgba(190,255,230,${.8 * (1 - yy / h)})`; const s = (1 + (k % 3)) * px; f.fillRect(cx + xx - s / 2, cy - yy, s, s);
+    }
+    f.restore();
+  }
+  // règle des longitudes (en haut) et altimètre (à gauche)
+  f.save(); f.font = `${10 * px}px ${FDATA()}`; f.textAlign = "center";
+  const tw = Math.min(560 * px, W * .4), ty = 30 * px, ppd = tw / 60, a1 = clamp(1 - (t - T_LOCK) / 1.2, 0, 1) * clamp(t / .8, 0, 1);
+  f.globalAlpha = a1;
+  f.strokeStyle = "rgba(79,216,255,.5)"; f.fillStyle = "rgba(150,230,255,.85)"; f.lineWidth = px;
+  for (let dg = Math.floor(lonC - 30); dg <= lonC + 30; dg++) {
+    const X = cx + (dg - lonC) * ppd, edge = 1 - Math.abs(dg - lonC) / 30;
+    f.globalAlpha = a1 * edge;
+    const big = dg % 15 === 0, mid = dg % 5 === 0;
+    if (!mid) continue;
+    f.beginPath(); f.moveTo(X, ty); f.lineTo(X, ty + (big ? 12 : 6) * px); f.stroke();
+    if (big) { const v = ((dg % 360) + 540) % 360 - 180; f.fillText(`${Math.abs(v)}°${v > 0 ? "E" : v < 0 ? "O" : ""}`, X, ty + 24 * px); }
+  }
+  f.globalAlpha = a1; f.fillStyle = `rgb(${col})`;
+  f.beginPath(); f.moveTo(cx, ty - 2 * px); f.lineTo(cx - 5 * px, ty - 9 * px); f.lineTo(cx + 5 * px, ty - 9 * px); f.fill();
+  const ax = 46 * px, ay0 = cy - 190 * px, ay1 = cy + 190 * px, la = (v) => ay0 + (ay1 - ay0) * (1 - Math.log10(Math.max(v, .1) / .1) / Math.log10(30000 / .1));
+  f.textAlign = "left"; f.strokeStyle = "rgba(79,216,255,.45)"; f.fillStyle = "rgba(150,230,255,.75)";
+  f.beginPath(); f.moveTo(ax, ay0); f.lineTo(ax, ay1); f.stroke();
+  for (const [v, lab] of [[10000, "10 000 KM"], [1000, "1 000 KM"], [100, "100 KM"], [10, "10 KM"], [1, "1 KM"], [.1, "100 M"]]) {
+    const Y = la(v); f.beginPath(); f.moveTo(ax, Y); f.lineTo(ax + 10 * px, Y); f.stroke(); f.fillText(lab, ax + 14 * px, Y + 3 * px);
+  }
+  for (let e = -1; e <= 4; e += .25) { const Y = la(Math.pow(10, e)); f.beginPath(); f.moveTo(ax, Y); f.lineTo(ax + 4 * px, Y); f.stroke(); }
+  const ya = la(altKm); f.fillStyle = `rgb(${col})`; f.shadowColor = `rgb(${col})`; f.shadowBlur = 8 * px;
+  f.beginPath(); f.moveTo(ax - 2 * px, ya); f.lineTo(ax - 12 * px, ya - 6 * px); f.lineTo(ax - 12 * px, ya + 6 * px); f.fill();
+  f.restore();
+  // éclairs : arrivée de la carte, verrouillage
+  const fl = Math.max(.32 * Math.exp(-Math.max(0, t - T_MAP) * 7) * (t > T_MAP ? 1 : 0), t > T_LOCK ? .75 * Math.exp(-(t - T_LOCK) * 5) : 0);
+  if (fl > .01) { f.save(); f.globalCompositeOperation = "lighter"; f.fillStyle = `rgba(170,240,255,${fl})`; f.fillRect(0, 0, W, H); f.restore(); }
+}
+
+/* ---------- la séquence ---------- */
+let fired = new Set(), lineShown = 0, decodeTick = 0, lockName = "";
+function cue(name, at, t, fn, always = false) {
+  if (t >= at && !fired.has(name)) { fired.add(name); if (always || t - at < .6) fn(); }
+}
+const GLYPHS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#/<>Δ";
 function drawBoot() {
   const now = performance.now();                      // même horloge que skip() et finishBoot()
   if (!bootStart) bootStart = now;
-  const t = (now - bootStart) / 1000;
+  const t = (now - bootStart) / 1000, dt = clamp((now - (lastNow || now)) / 1000, 0, .05); lastNow = now;
   const W = gc.width, H = gc.height, px = W / Math.max(1, gc.clientWidth);
   const cx = W / 2, cy = H * .5, R0 = Math.min(W, H) * .31;
   // rotation : 2 tours, de plus en plus lents, jusqu'à ta longitude
@@ -610,46 +1008,57 @@ function drawBoot() {
   const R = R0 * Z, zk = clamp(Math.log(Z) / Math.log(90), 0, 1);
   const intro = easeOut(clamp(t / .9, 0, 1));
   const mapU = clamp((t - T_MAP) / (T_LOCK - T_MAP + .6), 0, 1);
-  const mapA = LIVE ? clamp((t - T_MAP) / .9, 0, 1) : 0;
+  const mapA = clamp((t - T_MAP) / .9, 0, 1);
+  const vitMax = 720 * 4 / T_SPIN, vit = vitMax * Math.pow(1 - u, 3);
+  const warpG = t < T_SPIN ? Math.log(90) * 1.7 * Math.pow(zu, .7) / (T_SPIN - .8) : 0;
+  const warpM = t > T_MAP ? 7.4 * 3 * Math.pow(1 - mapU, 2) / (T_LOCK - T_MAP + .6) * .69 : 0;
+  const warp = clamp(Math.max(warpG, warpM * (1 - mapA * .3)) / 2.2, 0, 1);
+  const atmoE = clamp((t - T_ATMO) / .7, 0, 1) * clamp(1 - (t - T_MAP - .5) / .9, 0, 1);
   g.clearRect(0, 0, W, H);
+  drawStars(W, H, dt, 720 * (1 - spin), warp * (1 - atmoE), intro * clamp(1 - (t - T_ATMO) / 1.4, 0, 1), px);
+  drawFlare(cx, cy, R * (.75 + .25 * intro), W, H, px, clamp(1 - zk * 2.2, 0, 1) * intro * (.85 + .15 * Math.sin(t * 3)));
   drawGlobeOn(g, W, H, cx, cy, R * (.75 + .25 * intro), l0, p0, {
-    px, zk, alpha: intro * (1 - .85 * mapA),
+    px, zk, alpha: intro * (1 - .9 * mapA),
     fine: [[fine1, clamp((zk - .45) * 2.2, 0, 1) * .8, 1.6], [fine2, clamp((zk - .8) * 5, 0, 1) * .85, 1.8]]
   });
-  // carte réelle : zoom continu jusqu'à la rue, qui ralentit à la fin
-  drawMap(9.6 + 7.4 * easeOut(mapU, 3), mapA);
-  // réticule et grille tactique
+  drawOrbits(cx, cy, R * (.75 + .25 * intro), t, px, intro * clamp(1 - zk * 2.5, 0, 1));
+  drawAtmo(W, H, t, atmoE, px);
+  // carte réelle en hologramme : zoom jusqu'à la rue, puis vue inclinée en 3D qui tourne doucement
+  const lockQ = t > T_LOCK ? clamp((t - T_LOCK) / 1.4, 0, 1) : 0;
+  const zf = 9.6 + 7.4 * easeOut(mapU, 3);
+  processHolo(t < T_MAP ? 9 : 5, t < T_MAP ? 9 + 3 * clamp((t - 2) / (T_MAP - 2), 0, 1) : zf + .8);
+  drawMap(t, zf, mapA, clamp((t - T_MAP) / 1.3, 0, 1), lockQ);
+  const tp = ease(clamp((t - T_TILT) / (T_LOCK + .5 - T_TILT), 0, 1));
+  const shake = t > T_LOCK ? 7 * Math.exp(-(t - T_LOCK) * 6) : 0;
+  mc.style.transform = `translate(${(Math.random() - .5) * shake}px,${(Math.random() - .5) * shake}px) perspective(1100px) rotateX(${50 * tp}deg) rotateZ(${(t - T_MAP) * 3.2 - 10}deg)`;
+  // HUD
   const lock = clamp((t - T_LOCK + .9) / .8, 0, 1), done = t > T_LOCK;
-  const col = done ? "#3ef0a8" : "#4fd8ff";
-  g.save(); g.strokeStyle = col; g.fillStyle = col; g.lineWidth = 1.5 * px; g.shadowColor = col; g.shadowBlur = 10 * px;
-  const ring = (54 - 30 * lock) * px;
-  g.beginPath(); g.arc(cx, cy, ring, 0, TAU); g.stroke();
-  for (let k = 0; k < 4; k++) {
-    const a = k * Math.PI / 2 + (1 - lock) * t * 1.6 + Math.PI / 4 * (1 - lock);
-    g.beginPath(); g.moveTo(cx + Math.cos(a) * ring * 1.35, cy + Math.sin(a) * ring * 1.35); g.lineTo(cx + Math.cos(a) * ring * 2.4, cy + Math.sin(a) * ring * 2.4); g.stroke();
-  }
-  g.beginPath(); g.arc(cx, cy, 3.5 * px, 0, TAU); g.fill();
-  g.shadowBlur = 0; g.globalAlpha = .35; g.setLineDash([4 * px, 6 * px]);
-  g.beginPath(); g.moveTo(0, cy); g.lineTo(cx - ring * 2.6, cy); g.moveTo(cx + ring * 2.6, cy); g.lineTo(W, cy);
-  g.moveTo(cx, 0); g.lineTo(cx, cy - ring * 2.6); g.moveTo(cx, cy + ring * 2.6); g.lineTo(cx, H); g.stroke();
-  g.setLineDash([]); g.globalAlpha = 1;
-  if (done) for (let k = 0; k < 3; k++) {
-    const w = (t * 1.1 + k / 3) % 1;
-    g.strokeStyle = `rgba(62,240,168,${.65 * (1 - w)})`; g.beginPath(); g.arc(cx, cy, ring + w * 120 * px, 0, TAU); g.stroke();
-  }
-  g.restore();
-  // lectures
   const latC = p0, lonC = ((l0 + 540) % 360) - 180;
   const altKm = t < T_MAP ? 20000 / Z : Math.max(.3, 20000 / 90 / Math.pow(2, 7.4 * easeOut(mapU, 3)));
+  drawFx(t, { lock, done, tp, lonC: l0, altKm, mapA });
   $("#hLat").textContent = `${Math.abs(latC).toFixed(4)}° ${latC >= 0 ? "N" : "S"}`;
   $("#hLon").textContent = `${Math.abs(lonC).toFixed(4)}° ${lonC >= 0 ? "E" : "O"}`;
   $("#hAlt").textContent = altKm >= 10 ? `${Math.round(altKm).toLocaleString("fr-FR")} KM` : `${(altKm * 1000).toFixed(0)} M`;
-  const vit = 720 * 4 * Math.pow(1 - u, 3) / T_SPIN;
   $("#hRot").textContent = `${vit.toFixed(1)} °/S`;
   $("#hBar").style.width = `${Math.round(clamp(t / T_LOCK, 0, 1) * 100)}%`;
   $("#lock").style.opacity = done ? 1 : 0;
-  const n = Math.min(BOOT_LINES.length, Math.floor(t / 1.25) + 1);
-  $("#term").textContent = BOOT_LINES.slice(0, n).join("\n") + (Math.floor(t * 3) % 2 ? " _" : "");
+  let n = 0; while (n < LINE_AT.length && t >= LINE_AT[n]) n++;
+  if (n > lineShown) { if (n - lineShown === 1 && n > 1) SFX.blip(); lineShown = n; }
+  $("#term").textContent = BOOT_LINES.slice(0, Math.max(1, n)).join("\n") + (Math.floor(t * 3) % 2 ? " _" : "");
+  // nom de la ville qui se décode lettre par lettre
+  if (done) {
+    const q = clamp((t - T_LOCK) / .9, 0, 1), k = Math.floor(lockName.length * q);
+    $("#lockCity").textContent = lockName.slice(0, k) + [...lockName.slice(k)].map((c) => c === " " || c === "," ? c : GLYPHS[Math.random() * GLYPHS.length | 0]).join("");
+    if (q < 1 && now > decodeTick) { SFX.tick(); decodeTick = now + 45; }
+  }
+  // bruitages calés sur l'image
+  cue("power", 0, t, () => { SFX.loops(); SFX.powerUp(); });
+  cue("atmo", T_ATMO, t, SFX.atmo);
+  cue("map", T_MAP, t, SFX.mapIn);
+  cue("tilt", T_TILT, t, SFX.servo);
+  for (const p of POIS) cue("poi" + p.n, p.at, t, SFX.ping);
+  cue("lock", T_LOCK, t, SFX.lock, true);
+  SFX.update(t, vit / vitMax, warp, altKm);
   if (t > T_END && !bootDone) finishBoot();
   if (!bootDone) requestAnimationFrame(drawBoot);
 }
@@ -658,15 +1067,18 @@ function setTarget() {
   target = { lat: +L.lat || 46.5, lon: +L.lon || 2.5 };
   fine1 = landDots(target.lon, target.lat, 14, .3);
   fine2 = landDots(target.lon, target.lat, 2.2, .045);
-  $("#lockCity").textContent = `${(L.ville || "Position").toUpperCase()}${L.pays ? ", " + L.pays.toUpperCase() : ""}`;
+  lockName = `${(L.ville || "Position").toUpperCase()}${L.pays ? ", " + L.pays.toUpperCase() : ""}`;
+  $("#lockCity").textContent = lockName;
   $("#lockCoord").textContent = `CIBLE VERROUILLÉE · ${Math.abs(target.lat).toFixed(4)}°${target.lat >= 0 ? "N" : "S"}  ${Math.abs(target.lon).toFixed(4)}°${target.lon >= 0 ? "E" : "O"}`;
-  prefetch();
+  makePois(); prefetch();
 }
+function sizeBoot() { sizeCanvas(gc); sizeCanvas(mc, 1.25); sizeCanvas(fc); }
+function startSequence() { fired = new Set(); lineShown = 0; lastNow = 0; SFX.init(S.sons); SFX.reset(); }
 function replayBoot() {                                // « ouvre le plan de travail » alors qu'il est déjà ouvert : on rejoue le globe
   if (!bootDone) return;
   bootDone = false; bootStart = 0;
   boot.hidden = false; boot.classList.remove("out"); $("#lock").style.opacity = 0;
-  sizeCanvas(gc); sizeCanvas(mc); setTarget();
+  sizeBoot(); setTarget(); startSequence();
   report("animation du globe rejouée");
   requestAnimationFrame(drawBoot);
 }
@@ -674,11 +1086,13 @@ function finishBoot() {
   if (bootDone) return; bootDone = true;
   report(`animation du globe terminée (${((performance.now() - bootStart) / 1000).toFixed(1)} s)`);
   perfT = 0;                                           // la mesure de fluidité repart de zéro après le globe
+  SFX.exit();
+  $("#lockCity").textContent = lockName;
   boot.classList.add("out"); $("#deck").hidden = false;
   setTimeout(() => { boot.hidden = true; }, 1200);
   sizeOrb(); sizeCanvas(bg, 1.5); greet();
 }
-const skip = () => { if (bootStart) bootStart = performance.now() - T_END * 1000 + 300; };
+const skip = () => { if (bootStart && performance.now() - bootStart < (T_LOCK - .3) * 1000) bootStart = performance.now() - (T_LOCK - .2) * 1000; else if (bootStart) bootStart = performance.now() - T_END * 1000 + 300; };
 boot.addEventListener("click", skip);
 boot.addEventListener("keydown", (e) => { if (["Enter", " ", "Escape"].includes(e.key)) skip(); });
 
@@ -1005,20 +1419,21 @@ $("#fixpos").addEventListener("submit", (e) => {
 $("#close").addEventListener("click", () => { if (LIVE) send({ type: "fermer" }); else setQuip("Aperçu : sur ton PC, ce bouton ferme le plan de travail.", "INFO"); });
 
 /* ================= démarrage ================= */
-window.addEventListener("resize", () => { sizeCanvas(gc); sizeCanvas(mc); if (bootDone) { sizeOrb(); sizeCanvas(bg, 1.5); } });
+window.addEventListener("resize", () => { sizeBoot(); if (bootDone) { sizeOrb(); sizeCanvas(bg, 1.5); } });
 async function whenVisible() {                         // attend que la fenêtre soit vraiment affichée
   if (document.visibilityState !== "visible") await new Promise((r) => document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && r(), { once: false }));
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   await new Promise((r) => setTimeout(r, 450));
 }
 (async function start() {
-  sizeCanvas(gc); sizeCanvas(mc);
+  sizeBoot();
   await Promise.race([poll(), new Promise((r) => setTimeout(r, 1200))]);
   setLink(); setTarget(); render();
   report(`page chargée (fenêtre ${document.visibilityState === "visible" ? "visible" : "cachée"}${WIN_ANIM_OFF ? ", animations Windows coupées : globe joué quand même" : ""})`);
   await whenVisible();
   report("animation du globe lancée");
   if (REDUCED) { bootStart = performance.now() - T_END * 1000; }
+  startSequence();
   requestAnimationFrame(drawBoot);
   requestAnimationFrame(drawOrb);
   requestAnimationFrame(drawBg);

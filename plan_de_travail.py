@@ -260,6 +260,14 @@ def _geocode_address(addr: str) -> dict:
             "lat": float(r["lat"]), "lon": float(r["lon"])}
 
 
+def sound_volume() -> int:
+    """Volume des bruitages du plan de travail : JARVIS_PLAN_SONS de 0 (coupé) à 100. 60 par défaut."""
+    try:
+        return max(0, min(100, int(float(env_setting("JARVIS_PLAN_SONS") or 60))))
+    except ValueError:
+        return 60
+
+
 def env_setting(name: str) -> str:
     """Lit le réglage dans .env à chaque fois (pris en compte sans redémarrer Jarvis)."""
     try:
@@ -732,8 +740,9 @@ class Workspace:
         args = [br[0], f"--user-data-dir={profile}", "--no-first-run", "--no-default-browser-check",
                 "--disable-extensions", "--disable-sync", "--disable-features=Translate,MediaRouter",
                 "--hide-crash-restore-bubble", f"--window-position={l},{t}", f"--window-size={r - l},{b - t}",
-                "--start-fullscreen", f"--app={url}"]
+                "--start-fullscreen", "--autoplay-policy=no-user-gesture-required", f"--app={url}"]
         self.state["lieu"] = locate()                       # position à jour avant le globe (cache disque)
+        self.state["sons"] = sound_volume()                 # bruitages de l'animation (JARVIS_PLAN_SONS)
         self.open_flag.set()
         threading.Thread(target=self._collect, daemon=True).start()
         try:
