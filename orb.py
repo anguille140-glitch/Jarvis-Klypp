@@ -146,8 +146,41 @@ class Presence:
         self.env_t0 = 0.0
         self.fake_speech = False
         self.pinned = False                  # démo : toujours visible
+        self.pinned_until = 0.0              # visible un instant après un changement de réglage
         self.last_active = 0.0               # dernier moment où Jarvis écoutait / parlait
         self.lock = threading.Lock()
+        self.style = _load_style()           # taille, taille quand il parle, fond noir (réglables à la voix)
+
+    def set_style(self, action: str, valeur: str = "") -> str:
+        """« Jarvis, réduis ton orbe quand tu me parles », « fais-toi plus grand », « enlève le fond noir »..."""
+        with self.lock:
+            st = dict(self.style)
+            if action == "reinitialiser":
+                st = {}
+            elif action == "etat":
+                pass
+            elif action in ("taille", "taille_parole"):
+                cur = st.get(action) or st.get("taille") or BASE_SIZE
+                v = _size_value(valeur, cur)
+                if v is None:
+                    return "ÉCHEC : valeur de taille incomprise (petite, grande, plus_petite, ou un pourcentage)"
+                st[action] = v
+            elif action == "fond_noir":
+                v = _percent(valeur, st.get("fond_noir", 100))
+                if v is None:
+                    return "ÉCHEC : valeur incomprise (0 à 100, ou aucun / leger / moyen / total)"
+                st["fond_noir"] = v
+            else:
+                return f"ÉCHEC : action inconnue {action}"
+            self.style = st
+            _save_style(st)
+            self.pinned_until = time.monotonic() + 4.0          # se montre un instant pour voir le résultat
+            self.last_active = time.monotonic()
+        t = st.get("taille") or BASE_SIZE
+        tp = st.get("taille_parole")
+        return (f"OK : sphère {round(t * 100)} % de l'écran"
+                + (f", {round(tp * 100)} % quand je parle" if tp else "")
+                + f", fond noir {st.get('fond_noir', 100)} %")
 
     def set_state(self, mode: str, status: str | None = None) -> None:
         with self.lock:
@@ -200,6 +233,64 @@ class Presence:
 # ============================================================================
 # Fenêtre Windows transparente (vraie transparence pixel par pixel)
 # ============================================================================
+STYLE_FILE = BASE / ".cache" / "sphere.json"
+SIZE_MIN, SIZE_MAX = 0.10, 0.70          # part de la hauteur de l'écran
+try:
+    BASE_SIZE = max(SIZE_MIN, min(SIZE_MAX, float(os.environ.get("JARVIS_SPHERE_TAILLE") or 0.45)))
+except ValueError:
+    BASE_SIZE = 0.45
+_WORDS = {"tres_petite": 0.15, "minuscule": 0.12, "petite": 0.25, "moyenne": 0.40, "normale": 0.45,
+          "grande": 0.58, "tres_grande": 0.70, "geante": 0.70}
+
+
+def _load_style() -> dict:
+    try:
+        import json
+        return json.loads(STYLE_FILE.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _save_style(st: dict) -> None:
+    try:
+        import json
+        STYLE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        STYLE_FILE.write_text(json.dumps(st), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _size_value(v: str, cur: float) -> float | None:
+    import re
+    k = re.sub(r"[\s-]+", "_", (v or "").strip().lower()).replace("é", "e").replace("è", "e").replace("ê", "e")
+    if k in _WORDS:
+        x = _WORDS[k]
+    elif k in ("plus_petite", "plus_petit", "reduire", "moins_grande"):
+        x = cur * 0.7
+    elif k in ("plus_grande", "plus_grand", "agrandir"):
+        x = cur * 1.35
+    else:
+        m = re.search(r"\d+(?:[.,]\d+)?", k)
+        if not m:
+            return None
+        n = float(m.group(0).replace(",", "."))
+        x = n / 100 if n > 1 else n
+    return round(max(SIZE_MIN, min(SIZE_MAX, x)), 3)
+
+
+def _percent(v: str, cur: int) -> int | None:
+    import re
+    import unicodedata
+    k = "".join(c for c in unicodedata.normalize("NFKD", (v or "").strip().lower()) if not unicodedata.combining(c))
+    words = {"aucun": 0, "non": 0, "sans": 0, "enleve": 0, "leger": 40, "moyen": 70, "total": 100, "oui": 100,
+             "plein": 100}
+    for w, n in words.items():
+        if w in k:
+            return n
+    m = re.search(r"\d+", k)
+    return max(0, min(100, int(m.group(0)))) if m else None
+
+
 LINGER_S = 7.0        # reste visible après la réponse (le temps d'enchaîner sans redire « Jarvis »)
 FADE_IN_S, FADE_OUT_S = 1.0, 0.9      # apparition / disparition
 
@@ -255,6 +346,7 @@ class Compositor:
                        "v": random.uniform(0.05, 0.25) * random.choice((-1, 1)), "z": random.uniform(1, 3.2),
                        "ph": random.uniform(0, 6.28)} for _ in range(70)]
         self.lvl = 0.0
+        self.zoom = 1.0                                          # taille actuelle / taille max de la fenêtre
 
     def frame(self, t: float, dt: float, mode: str, target: float, status: str, sub: str,
               appear: float = 1.0) -> Image.Image:
@@ -265,24 +357,25 @@ class Compositor:
         self.lvl += (target - self.lvl) * k
         e = appear * appear * (3 - 2 * appear)                   # courbe douce
         flare = 0.9 * math.sin(math.pi * min(1.0, appear)) ** 2   # éclat au milieu de l'apparition
-        size = max(8, int(self.M * (0.35 + 0.65 * e)))            # elle grandit depuis le centre
+        z = self.zoom
+        size = max(8, int(self.M * z * (0.35 + 0.65 * e)))        # elle grandit depuis le centre
         orb = Image.fromarray(self.renderer.render(t, min(1.2, self.lvl + flare * 0.6), mode))
         orb = orb.resize((size, size), Image.BILINEAR)
         img = Image.new("RGB", (self.W, self.H), "black")
         img.paste(orb, (int(self.cx - size / 2), int(self.cy - size / 2)))
         d = ImageDraw.Draw(img)
-        R = self.D / 2
+        R = self.D * z / 2
         speed = 1.0 + 3.0 * self.lvl + (2.5 if mode == "thinking" else 0) + (1.0 if mode == "listening" else 0)
         for p in self.parts:
             p["a"] += p["v"] * speed * dt
             rr = R * (p["r"] + 0.03 * math.sin(t * 1.3 + p["ph"]) + 0.10 * self.lvl * math.sin(t * 7 + p["ph"]))
             rr *= 1 + 1.6 * (1 - e) * (0.6 + 0.4 * math.sin(p["ph"] * 3))   # elles arrivent de loin
             x, y = self.cx + rr * math.cos(p["a"]), self.cy + rr * math.sin(p["a"])
-            z = p["z"] * (1 + 0.8 * self.lvl) * self.scale
-            d.ellipse((x - z, y - z, x + z, y + z), fill=(77, 141, 255))
+            pz = p["z"] * (1 + 0.8 * self.lvl) * self.scale * (0.5 + 0.5 * z)
+            d.ellipse((x - pz, y - pz, x + pz, y + pz), fill=(77, 141, 255))
         glow = 0.55 + 0.25 * math.sin(t * 1.15) + 0.4 * self.lvl
         c = int(min(255, 0x3d + 120 * glow))
-        y0 = self.cy + self.D * 0.60
+        y0 = self.cy + self.D * z * 0.60
         if e < 0.6:
             return img
         d.text((self.cx, y0), "J . A . R . V . I . S", fill=(c // 3, c, 255), font=self.f_title, anchor="mm")
@@ -335,17 +428,19 @@ class Orb:
         self.attached = False
         l, t, r, b = _monitor_rect((os.environ.get("JARVIS_SPHERE_ECRAN") or "principal").strip().lower())
         sw, sh = r - l, b - t
-        try:
-            size = float(os.environ.get("JARVIS_SPHERE_TAILLE") or 0.45)
-        except ValueError:
-            size = 0.45
-        D = int(sh * max(0.15, min(0.8, size)))
+        # fenêtre prévue pour la taille max ; la taille réelle (réglable à la voix) est un zoom dedans
+        st = self.presence.style
+        self.max_size = max(BASE_SIZE, st.get("taille") or 0, st.get("taille_parole") or 0,
+                            float(os.environ.get("JARVIS_SPHERE_TAILLE_MAX") or 0.60))
+        self.max_size = min(SIZE_MAX, self.max_size)
+        D = int(sh * self.max_size)
         scale = sh / 1080
         RW = int(max(D * 1.4, 1000 * scale))
         RH = int(D * 1.35 + 190 * scale)
         rx = l + (sw - RW) // 2
         ry = t + max(0, int((sh - RH) * 0.42))
         self.comp = Compositor(RW, RH, D, scale)
+        self.comp.zoom = self._target_zoom("idle")
         self.fade = 0.0
         self.shown = False
         self.screen = (l, t, sw, sh)
@@ -380,6 +475,13 @@ class Orb:
                 self._create_black()
             except Exception:  # noqa: BLE001
                 log.warning("Fond noir indisponible", exc_info=True)
+
+    def _target_zoom(self, mode: str) -> float:
+        st = self.presence.style
+        size = st.get("taille") or BASE_SIZE
+        if mode == "speaking" and st.get("taille_parole"):
+            size = st["taille_parole"]
+        return max(0.1, min(1.0, size / self.max_size))
 
     # --- Win32
     def _create_window(self) -> None:
@@ -656,8 +758,14 @@ class Orb:
                 p = self.presence
                 mode, target = p.level(start)
                 with p.lock:
-                    want = p.pinned or mode != "idle" or (start - p.last_active) < LINGER_S
+                    want = (p.pinned or mode != "idle" or (start - p.last_active) < LINGER_S
+                            or start < p.pinned_until)
                     status, sub = p.status, p.subtitle
+                    nb = p.style.get("fond_noir")
+                if nb is not None:
+                    self.black_max = nb / 100                                  # réglé à la voix
+                tz = self._target_zoom(mode)
+                self.comp.zoom += (tz - self.comp.zoom) * min(1.0, dt * 5)     # changement de taille en douceur
                 if want:
                     self.fade = min(1.0, self.fade + dt / FADE_IN_S)
                 else:

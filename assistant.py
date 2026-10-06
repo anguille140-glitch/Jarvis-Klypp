@@ -97,7 +97,8 @@ def play(pcm: np.ndarray, rate: int = 44100) -> None:
 class Voice:
     def __init__(self) -> None:
         # elevenlabs | piper (locale) | windows ; en IA locale : piper par défaut
-        default = "piper" if _env("JARVIS_IA", "local").lower() == "local" else "elevenlabs"
+        mode_ia = _env("JARVIS_IA", "hybride" if _env("GEMINI_API_KEY") else "local").lower()
+        default = "piper" if mode_ia in ("local", "locale") else "elevenlabs"
         self.mode = _env("JARVIS_VOIX_REPONSES", default).lower()
         self.piper = None
         self.lock = threading.Lock()
@@ -868,6 +869,14 @@ TOOLS = [{"functionDeclarations": [
         {"action": _p("action", enum=["maintenant", "bilan", "annuler"]),
          "heures": _p("pour annuler : ce qui a été appris ces X dernières heures (défaut 24)", "INTEGER")},
         ["action"]),
+    _fn("sphere", "Ton apparence : la SPHÈRE (orbe) de Jarvis. taille = taille normale ; taille_parole = taille "
+        "quand tu parles (« réduis ton orbe quand tu me parles ») ; fond_noir = opacité du fond noir (0 = aucun) ; "
+        "reinitialiser = réglages d'origine ; etat = réglages actuels. valeur : tres_petite, petite, moyenne, "
+        "grande, tres_grande, plus_petite, plus_grande, ou un pourcentage (taille : % de la hauteur de l'écran, "
+        "10 à 70 ; fond_noir : 0 à 100). Effet immédiat, gardé pour la suite.",
+        {"action": _p("action", enum=["taille", "taille_parole", "fond_noir", "reinitialiser", "etat"]),
+         "valeur": _p("tres_petite | petite | moyenne | grande | tres_grande | plus_petite | plus_grande | nombre")},
+        ["action"]),
     _fn("attendre_fenetre", "Attend qu'une fenêtre apparaisse (appli qui se lance, jeu qui charge) avant d'agir "
         "dessus : à appeler après ouvrir_application quand l'étape suivante concerne cette fenêtre.",
         {"nom": _p("application ou titre de la fenêtre attendue"),
@@ -1277,6 +1286,13 @@ class Actions:
             return self.auto.undo_learned(float(heures or 24), self.memory, self.skills)
         return "Ce que j'ai appris récemment :\n" + self.auto.learned_text()
 
+    # --- apparence de la sphère
+    def do_sphere(self, action: str, valeur: str = "") -> str:
+        ui = getattr(self.voice, "ui", None)
+        if ui is None or not hasattr(ui, "set_style"):
+            return "ÉCHEC : la sphère n'est pas affichée (JARVIS_SPHERE=non ?)"
+        return ui.set_style(action, str(valeur or ""))
+
     # --- créations (sites, diaporamas, interfaces, jeux...)
     def do_creation(self, action: str, type: str = "autre", nom: str = "", description: str = "") -> str:  # noqa: A002
         import creations
@@ -1447,7 +1463,7 @@ STOP_ALL_RE = re.compile(r"\b(stop total|stop tout|stoppe tout|arret d urgence|a
                          r"urgence stop|coupe tout)\b")
 QUICK_MIN_SCORE = 0.88      # sûr à 88 % du nom de l'appli : sinon on laisse Gemini comprendre
 # Actions qui n'ont pas besoin que Gemini « relise » le résultat avant de répondre
-NO_READBACK = {"ouvrir_application", "fermer_application", "fenetre", "ouvrir_site", "rechercher",
+NO_READBACK = {"sphere", "ouvrir_application", "fermer_application", "fenetre", "ouvrir_site", "rechercher",
                "jouer_youtube", "ouvrir_dossier", "volume", "media", "taper_texte", "raccourci_clavier",
                "cliquer", "defiler", "rappel", "systeme", "memoriser", "oublier", "camera", "musique"}
 MULTI_STEP = re.compile(r"\b(et|puis|ensuite|apres|avant|quand|si)\b")
@@ -1461,6 +1477,10 @@ DONE_RE = re.compile(r"\b(c est fait|voila|c est bon|c est parti|c est lance|c e
 ACTION_RE = re.compile(r"^(?:jarvis )?(?:\w+ )?(?:coupe|arrete|stop|ferme|ouvre|lance|mets|met|baisse|monte|"
                        r"eteins|allume|deplace|change|passe|joue|cree|fais|supprime|vire|enleve|demarre|redemarre|"
                        r"active|desactive|minimise|agrandis|reduis|tape|ecris|clique|cherche)\b")
+# l'IA dit qu'elle ne peut pas : en mode hybride, on passe la main à Gemini
+CANT_RE = re.compile(r"\b(je ne (?:peux|sais|suis) pas|je n ai pas (?:la possibilite|acces|les moyens|d outil|"
+                     r"la capacite)|impossible|pas possible|je ne suis pas (?:en mesure|capable)|je ne dispose pas|"
+                     r"aucun outil|je n arrive pas|je n y arrive pas|pas en mesure|ne m est pas possible)\b")
 MAX_STEPS = int(_env("JARVIS_ETAPES_MAX", "20") or 20)     # tours d'outils max pour une seule demande
 
 
@@ -1471,8 +1491,9 @@ def _routine_hits(heard: str, items: dict) -> list[str]:
 
 
 class Brain:
-    def __init__(self, gemini: Gemini, actions: Actions, voice: Voice, user: str, ears=None) -> None:
+    def __init__(self, gemini: Gemini, actions: Actions, voice: Voice, user: str, ears=None, strong=None) -> None:
         self.gemini, self.actions, self.voice, self.user = gemini, actions, voice, user
+        self.strong = strong                   # mode hybride : Gemini, quand l'IA locale ne s'en sort pas
         self.ears = ears                       # Whisper (IA locale), sinon None
         self.turns: list[list[dict]] = []      # historique, par échange
         if actions.skills is not None:
@@ -1621,11 +1642,13 @@ class Brain:
         self.voice.say(reply)
         return True
 
-    def handle(self, wav: bytes, heard: str, sure: bool = True) -> bool:
+    def handle(self, wav: bytes, heard: str, sure: bool = True, llm=None, fallback_text: str = "") -> bool:
         """Traite un message vocal. sure=True : on a clairement appelé Jarvis.
-        Renvoie True si Jarvis a répondu (=> on peut enchaîner sans redire Jarvis)."""
+        Renvoie True si Jarvis a répondu (=> on peut enchaîner sans redire Jarvis).
+        Mode hybride : l'IA locale répond ; si elle n'y arrive pas, Gemini reprend la demande (llm=self.strong)."""
+        llm = llm or self.gemini
         self.actions.tainted = False                    # rien lu sur internet pour cette demande (pour l'instant)
-        if getattr(self.gemini, "accepts_audio", True):
+        if getattr(llm, "accepts_audio", True):
             user_parts = [
                 {"inlineData": {"mimeType": "audio/wav", "data": base64.b64encode(wav).decode()}},
                 {"text": f"(Message vocal. Transcription locale approximative, peut être fausse : « {heard} »)"},
@@ -1650,7 +1673,7 @@ class Brain:
                     self.voice.say_async(random.choice(["Je m'en occupe.", "Je m'en charge, monsieur.",
                                                         "C'est en cours."]))
                 decls = base_decls + (sk.declarations() if sk else [])   # + les compétences apprises
-                resp = self.gemini.generate({
+                resp = llm.generate({
                     "systemInstruction": system, "contents": history + turn,
                     "tools": [{"functionDeclarations": decls}], "generationConfig": {"temperature": 0.4},
                 })
@@ -1706,7 +1729,13 @@ class Brain:
         except GeminiError as e:
             msg = str(e)
             log.error("IA : %s", msg)
-            if getattr(self.gemini, "local", False):
+            if fallback_text:                           # Gemini indisponible : on garde la réponse locale
+                self.voice.say(fallback_text)
+                return True
+            if llm is self.gemini and self.strong is not None and not self.voice.stale():
+                log.info("IA locale en panne : Gemini prend le relais.")
+                return self.handle(wav, heard, sure, llm=self.strong)
+            if getattr(llm, "local", False):
                 if msg.startswith("404"):
                     self.voice.say("Mon modèle d'IA locale n'est pas installé. Lance installer IA locale.")
                 elif msg.startswith("réseau"):
@@ -1728,6 +1757,12 @@ class Brain:
         if ignored:
             log.info("(message ignoré : pas pour Jarvis)")
             return False
+        failed = bool(trace) and all(t["resultat"].startswith("ÉCHEC") for t in trace)
+        if (llm is self.gemini and self.strong is not None and not self.voice.stale()
+                and (CANT_RE.search(norm(final_text)) or failed)):
+            # l'IA locale dit qu'elle ne peut pas (ou tout a échoué) : Gemini, plus fort, réessaie
+            log.info("IA locale bloquée (« %s ») : Gemini reprend la demande.", final_text[:80])
+            return self.handle(wav, heard, sure, llm=self.strong, fallback_text=final_text or "Je n'y arrive pas.")
         # dans l'historique, on remplace l'audio par sa transcription (plus léger)
         turn[0] = {"role": "user", "parts": [{"text": f"(message vocal, transcription approximative : « {heard} »)"}]}
         self.turns.append(turn)
@@ -2156,8 +2191,8 @@ def _shutdown(voice: "Voice", status) -> int:
 def pick_ai(status):
     """Choisit le cerveau : IA locale (Ollama), Gemini gratuit, ou les deux (hybride).
     Renvoie (cerveau, cerveau des gros travaux, transcripteur Whisper ou None)."""
-    mode = _env("JARVIS_IA", "local").lower()
     key = _env("GEMINI_API_KEY")
+    mode = _env("JARVIS_IA", "hybride" if key else "local").lower()   # défaut : hybride si clé Gemini
     gemini = Gemini(key) if key else None
     if mode in ("local", "hybride", "locale"):
         import local_ai
@@ -2169,7 +2204,8 @@ def pick_ai(status):
                 log.warning("Modèle %s pas encore téléchargé : lance installer_ia_locale.bat.", llm.model)
             heavy = gemini if (mode == "hybride" and gemini) else llm
             log.info("Cerveau : IA LOCALE (%s)%s.", llm.model,
-                     " + Gemini gratuit pour les gros travaux" if heavy is gemini else ", 100 % sur ton PC")
+                     " + Gemini gratuit en renfort (gros travaux, et quand le local n'y arrive pas)"
+                     if heavy is gemini else ", 100 % sur ton PC")
             return llm, heavy, local_ai.Transcriber()
         log.warning("Ollama ne répond pas (installe-le avec installer_ia_locale.bat).")
         if not gemini:
@@ -2197,7 +2233,8 @@ def run(device: int, rate: int, user: str = "Monsieur", clap_factory=None, rms=N
     voice.ui = ui
     if ears is not None:
         ears.warm()                                       # charge Whisper pendant que tu parles d'autre chose
-    brain = Brain(brain_llm, Actions(voice, heavy_llm, user), voice, user, ears)
+    brain = Brain(brain_llm, Actions(voice, heavy_llm, user), voice, user, ears,
+                  strong=heavy_llm if heavy_llm is not brain_llm else None)
     try:
         ear = Ear(device, rate, clap_factory, rms, voice.speaking)
     except ImportError:
