@@ -328,6 +328,16 @@ def with_web_results(body: dict) -> dict:
 
 # ============================================================================
 # Oreilles : Faster-Whisper
+# Whisper a appris sur des sous-titres de télé : sur du silence ou du bruit, il « invente » ces phrases-là.
+HALLUCINATIONS = re.compile(
+    r"sous[- ]?titr|st'? ?501|amara\.org|merci d'avoir regard|merci de votre attention|abonnez[- ]vous|"
+    r"n'oubliez pas de vous abonner|à la prochaine|radio[- ]canada|société radio|transcription par|"
+    r"sous-titres réalisés|merci à tous|bonne journée à tous|♪|\[musique\]|\(musique\)", re.I)
+
+
+def is_hallucination(text: str) -> bool:
+    t = (text or "").strip()
+    return bool(t) and (bool(HALLUCINATIONS.search(t)) or len(set(t.lower().split())) <= 1 and len(t.split()) > 3)
 # ============================================================================
 class Transcriber:
     def __init__(self) -> None:
@@ -394,11 +404,17 @@ class Transcriber:
             with wave.open(io.BytesIO(wav)) as w:
                 pcm = np.frombuffer(w.readframes(w.getnframes()), np.int16).astype(np.float32) / 32768
             t0 = time.monotonic()
-            segs, _ = m.transcribe(pcm, language="fr", beam_size=5, vad_filter=False,
+            segs, _ = m.transcribe(pcm, language="fr", beam_size=5, vad_filter=True,
+                                   condition_on_previous_text=False,
                                    initial_prompt="Jarvis, " + (hint or "ouvre Discord, lance CS2, mets ma musique."))
-            text = " ".join(s.text.strip() for s in segs).strip()
+            # on jette les morceaux où Whisper « devine » sur du silence / du bruit
+            keep = [x.text.strip() for x in segs if x.no_speech_prob < .6 and x.avg_logprob > -1.0]
+            text = " ".join(keep).strip()
+            if is_hallucination(text):
+                log.info("Whisper (%.1f s) : « %s » ignoré (phrase inventée sur du bruit)", time.monotonic() - t0, text)
+                return None
             log.info("Whisper (%.1f s) : %s", time.monotonic() - t0, text)
-            return text
+            return text or None
 
 
 # ============================================================================

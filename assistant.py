@@ -1803,6 +1803,9 @@ class Brain:
             ]
         else:                                           # IA locale : on transcrit avec Whisper
             text = self.ears(wav) if self.ears else None
+            if not text and len(norm(heard).split()) < 2:   # ni Whisper ni Vosk n'ont rien compris : on se tait
+                log.info("(rien de compréhensible : pas de réponse)")
+                return False
             if text:
                 heard = text
                 try:
@@ -2571,7 +2574,7 @@ def run(device: int, rate: int, user: str = "Monsieur", clap_factory=None, rms=N
                 try:
                     done = brain.quick(heard, words)      # ordres courants : même si « Jarvis » était flou
                     if not done and brain.ears is not None and LIKELY_CMD.search(norm(heard)):
-                        better = brain.ears(wav)          # 2e écoute, plus précise (Whisper)
+                        better = brain.ears(wav)          # 2e écoute, plus précise (Whisper) ; None = rien de fiable
                         if better and norm(better) != norm(heard):
                             log.info("Réécoute (Whisper) : %s", better)
                             done = brain.quick(better, words)
