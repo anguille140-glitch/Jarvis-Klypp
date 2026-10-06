@@ -94,7 +94,7 @@ def main() -> int:
     m = t._load()
     print("Whisper OK." if m else "Whisper indisponible : Jarvis utilisera Vosk.", f"({time.monotonic() - t0:.0f} s)")
 
-    step("5/5  Oreille du mot « Jarvis » : grand modèle français (1,4 Go, bien plus précis)")
+    step("5/5  (optionnel) Grand modèle de reconnaissance français (1,4 Go) — activé seulement avec JARVIS_VOSK=grand")
     big = BASE / "modeles" / "vosk-fr-grand"
     if big.is_dir():
         print("Déjà installé.")
@@ -109,7 +109,7 @@ def main() -> int:
                 zf.extractall(BASE / "modeles")
             (BASE / "modeles" / "vosk-model-fr-0.22").rename(big)
             z.unlink(missing_ok=True)
-            print("Grand modèle installé : Jarvis l'utilisera au prochain démarrage.")
+            print("Grand modèle installé. Pour l'utiliser : ajoute JARVIS_VOSK=grand dans .env (plus précis, mais lourd).")
         except Exception as e:  # noqa: BLE001
             print("Grand modèle non installé (", e, ") : Jarvis garde le petit modèle.")
 

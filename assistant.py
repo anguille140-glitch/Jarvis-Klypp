@@ -1975,10 +1975,23 @@ def _normalize(pcm: np.ndarray) -> np.ndarray:
     return np.clip(x * gain, -32767, 32767).astype(np.int16)
 
 
+_MODEL_CACHE: dict = {}
+
+
+def _shared_model(Model, path: Path):
+    """Charge le modèle de reconnaissance une seule fois (« salut Jarvis » puis l'assistant le réutilisent)."""
+    key = str(path)
+    if key not in _MODEL_CACHE:
+        t0 = time.monotonic()
+        _MODEL_CACHE[key] = Model(key)
+        log.info("Reconnaissance vocale prête (%s, chargée en %.1f s).", path.name, time.monotonic() - t0)
+    return _MODEL_CACHE[key]
+
+
 def _find_vosk_model() -> Path | None:
     d = BASE / "modeles"
-    if (d / "vosk-fr-grand").is_dir() and _env("JARVIS_VOSK", "grand") != "petit":
-        return d / "vosk-fr-grand"                     # grand modèle français : entend bien mieux « Jarvis »
+    if (d / "vosk-fr-grand").is_dir() and _env("JARVIS_VOSK", "petit") == "grand":
+        return d / "vosk-fr-grand"                     # grand modèle (sur demande) : plus précis mais lourd
     if (d / "vosk-fr").is_dir():
         return d / "vosk-fr"
     if d.is_dir():
@@ -2056,7 +2069,7 @@ class Ear:
         path = _find_vosk_model()
         if path is None:
             raise FileNotFoundError("modèle Vosk absent (dossier modeles) : relance installer.bat")
-        self.model = Model(str(path))
+        self.model = _shared_model(Model, path)
         self.rec = KaldiRecognizer(self.model, VOSK_RATE)
         self.barge_rec = KaldiRecognizer(self.model, VOSK_RATE)   # guette « Jarvis » pendant qu'il parle
         self.barge = threading.Event()                            # interruption possible : on garde le micro
