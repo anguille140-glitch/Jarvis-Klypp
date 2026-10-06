@@ -96,12 +96,17 @@ def main() -> int:
     env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1")
     args: list[str] = []                        # 1er lancement : attend « salut Jarvis » (intro)
     fails, delay = 0, 3.0
+    started_once = False
     note("démarrage (Jarvis tourne caché ; journal : jarvis.log)")
     while True:
         rotate_log()
         started = time.monotonic()
         with LOG.open("a", encoding="utf-8") as out:
-            p = subprocess.Popen([python_exe(), "jarvis.py", *args], cwd=BASE, env=env, stdin=subprocess.DEVNULL,
+            first = "1" if not started_once else "0"
+            started_once = True
+            p = subprocess.Popen([python_exe(), "jarvis.py", *args], cwd=BASE,
+                                 env={**env, "JARVIS_SUPERVISE": "1", "JARVIS_PREMIER_LANCEMENT": first},
+                                 stdin=subprocess.DEVNULL,
                                  stdout=out, stderr=subprocess.STDOUT, creationflags=CREATE_NO_WINDOW)
             save_pids(p.pid)
             rc = p.wait()

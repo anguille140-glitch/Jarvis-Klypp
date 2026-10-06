@@ -1022,6 +1022,29 @@ ALREADY_RUNNING = 11
 _MUTEX = None
 
 
+def _kill_other_instances() -> None:
+    """Ferme les AUTRES Jarvis encore ouverts (ancienne version cachée, fenêtre lancer.bat oubliée...).
+    Sinon : deux Jarvis écoutent, deux musiques jouent, et « coupe la musique » n'arrête que la sienne."""
+    me, parent = os.getpid(), os.getppid()
+    ps = ("Get-CimInstance Win32_Process -Filter \"Name like 'python%'\" | "
+          "Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress")
+    try:
+        out = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, timeout=20,
+                             creationflags=subprocess.CREATE_NO_WINDOW).stdout.decode("utf-8", "replace")
+        procs = json.loads(out or "[]")
+        procs = [procs] if isinstance(procs, dict) else procs
+    except Exception:  # noqa: BLE001
+        return
+    for p in procs:
+        pid, cmd = int(p.get("ProcessId") or 0), (p.get("CommandLine") or "").lower()
+        if pid in (me, parent, 0) or "jarvis.py" not in cmd or "--demo" in cmd:
+            continue
+        subprocess.run(["taskkill", "/PID", str(pid), "/F"], capture_output=True,
+                       creationflags=subprocess.CREATE_NO_WINDOW)
+        log.info("Ancien Jarvis encore ouvert (processus %d) : fermé.", pid)
+    time.sleep(0.5)
+
+
 def _single_instance() -> bool:
     """Un seul Jarvis à la fois (sinon deux Jarvis écoutent le micro et répondent ensemble)."""
     global _MUTEX
@@ -1045,6 +1068,9 @@ def main() -> int:
     if sys.stderr is None:  # lancé sans fenêtre (démarrage de Windows) : on écrit dans un fichier
         logging.getLogger().addHandler(logging.FileHandler(BASE / "jarvis.log", encoding="utf-8"))
 
+    sup = os.environ.get("JARVIS_SUPERVISE") == "1"
+    if "--demo" not in sys.argv and (not sup or os.environ.get("JARVIS_PREMIER_LANCEMENT") == "1"):
+        _kill_other_instances()                    # lancement à la main / démarrage : le plus récent gagne
     if "--demo" not in sys.argv and not _single_instance():
         log.warning("Jarvis tourne déjà (en arrière-plan ?) : arreter_jarvis.bat pour l'arrêter.")
         return ALREADY_RUNNING

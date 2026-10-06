@@ -1480,10 +1480,11 @@ SCREEN_RE = re.compile(
 SCREEN_FILLER = {"ca", "cela", "ceci", "la", "le", "les", "l", "cette", "fenetre", "celle", "ci", "moi",
                  "d", "de", "du", "sur", "vers", "a", "dans", "en", "pour", "page", "onglet"}
 # Musique de Jarvis (intro, dossier musique) : pilotée directement, sans IA -> fiable et instantané
-_MUS = r"(?:la |ma |le |cette |l )?(?:musique|chanson|son|zik|morceau|playlist)(?: de l intro| d intro| de l introduction)?"
+_MUS = (r"(?:la |ma |le |cette |l |ta )?(?:musique|chanson|zik|zic|morceau|playlist|music)"
+        r"(?: de l intro| d intro| de l introduction| de jarvis)?(?: s il te plait| stp| merci| jarvis| maintenant)?")
 MUSIC_CMDS = [
     ("stop", re.compile(r"^(?:coupe|couper|arrete|arreter|stop|stoppe|eteins|eteindre|ferme|fermer|enleve|vire)"
-                        r"(?: moi)? " + _MUS + r"$|^(?:stop|coupe) (?:l )?intro$")),
+                        r"(?: moi| nous)? " + _MUS + r"$|^(?:stop|coupe|arrete) (?:l )?intro$|^(?:stop|stoppe)$")),
     ("pause", re.compile(r"^(?:mets?|met) (?:en )?pause(?: " + _MUS + r")?$|^pause(?: " + _MUS + r")?$")),
     ("reprendre", re.compile(r"^(?:reprends?|relance|remets?|redemarre)(?: moi)? " + _MUS + r"$")),
     ("suivante", re.compile(r"^(?:musique |chanson )?suivante$|^(?:passe|mets?|zappe)(?: a)? (?:la )?"
@@ -1659,7 +1660,11 @@ class Brain:
         except Exception:  # noqa: BLE001
             return None
         if p is None or not (p.active or p.state == "ready"):
+            if action == "stop":                       # pas de musique de Jarvis : on arrête le lecteur en cours
+                tap_vk(0xB2)                           # touche « stop » multimédia (Spotify, YouTube...)
+                return "Lecture arrêtée (touche multimédia)"
             return None
+        log.info("Musique : %s (état : %s, %s)", action, p.state, p.current.name if p.current else "-")
         if action == "reprendre":
             return p.resume() if p.state == "pause" else "déjà en cours"
         if action == "pause":
