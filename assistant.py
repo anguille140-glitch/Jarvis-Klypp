@@ -1977,6 +1977,8 @@ def _normalize(pcm: np.ndarray) -> np.ndarray:
 
 def _find_vosk_model() -> Path | None:
     d = BASE / "modeles"
+    if (d / "vosk-fr-grand").is_dir() and _env("JARVIS_VOSK", "grand") != "petit":
+        return d / "vosk-fr-grand"                     # grand modèle français : entend bien mieux « Jarvis »
     if (d / "vosk-fr").is_dir():
         return d / "vosk-fr"
     if d.is_dir():
@@ -2030,7 +2032,7 @@ def is_wake(text: str, words: set[str]) -> tuple[bool, str]:
 
 
 WAKE_SURE = 0.86       # au-dessus : on est sûr qu'on a dit « Jarvis »
-WAKE_MAYBE = 0.72      # entre les deux : on demande à Gemini de vérifier (il peut ignorer)
+WAKE_MAYBE = 0.68      # entre les deux : on demande à Gemini de vérifier (il peut ignorer)
 BARGE_SCORE = 0.9      # pour couper Jarvis pendant qu'il parle, il faut un « Jarvis » bien net
 
 
@@ -2096,7 +2098,8 @@ class Ear:
             if text:
                 sc, _ = wake_score(text, words)
                 echo = wake_score(spoken() or "", words)[0] >= WAKE_MAYBE
-                if sc >= BARGE_SCORE and not echo:
+                need = BARGE_SCORE if spoken() else WAKE_SURE      # il ne parle pas : un « Jarvis » normal suffit
+                if sc >= need and not echo:
                     log.info("Interruption : « %s »", text)
                     return True
             if final:
@@ -2218,7 +2221,9 @@ class Ear:
             else:
                 partial = text
             heard = (heard_final + " " + partial).strip()
-            _, rest = wake_score(heard, words) if mode == "jarvis" else (0, heard)
+            sc_w, rest = wake_score(heard, words) if mode == "jarvis" else (0, heard)
+            if sc_w < WAKE_MAYBE:
+                rest = heard
             if speech:
                 silence, has_speech = 0.0, True
                 speech_chunks += 1
@@ -2242,7 +2247,9 @@ class Ear:
         heard = (heard_final + " " + partial).strip()
         if DEBUG:
             log.info("Phrase complète (Vosk) : %s", heard or "(rien)")
-        _, rest = wake_score(heard, words) if mode == "jarvis" else (0, heard)
+        sc_w, rest = wake_score(heard, words) if mode == "jarvis" else (0, heard)
+        if sc_w < WAKE_MAYBE:
+            rest = heard
         has_request = bool(rest.split()) or speech_chunks >= (8 if mode == "jarvis" else 3)
         pcm = _normalize(np.concatenate(audio)) if audio else np.zeros(0, np.int16)
         return _to_wav(pcm), heard, has_request
@@ -2513,12 +2520,14 @@ def run(device: int, rate: int, user: str = "Monsieur", clap_factory=None, rms=N
                 _duck_music(True)                         # la musique baisse : il t'entend bien
             if sure:
                 # bip SANS couper le micro : tu peux enchaîner ta demande tout de suite
-                threading.Thread(target=play, args=(BEEP_LISTEN,), daemon=True).start()
+                if _env("JARVIS_BIP", "0") in ("1", "oui", "on"):   # bip coupé par défaut
+                    threading.Thread(target=play, args=(BEEP_LISTEN,), daemon=True).start()
                 status("listening")
             wav, heard, has_request = ear.capture(words, "suite" if mode == "suite" else "jarvis")
             if not has_request:
                 if sure and mode != "suite":
-                    play(BEEP_CANCEL)
+                    if _env("JARVIS_BIP", "0") in ("1", "oui", "on"):
+                        play(BEEP_CANCEL)
                 _duck_music(False)
                 status("idle")
                 ear.reset()

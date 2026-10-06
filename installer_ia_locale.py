@@ -35,7 +35,7 @@ def ollama_exe() -> str | None:
 
 
 def main() -> int:
-    step("1/4  Ollama (le moteur de l'IA locale)")
+    step("1/5  Ollama (le moteur de l'IA locale)")
     if not ollama_exe():
         print("Installation d'Ollama...")
         if shutil.which("winget"):
@@ -57,7 +57,7 @@ def main() -> int:
         return 1
     print("Ollama OK.")
 
-    step(f"2/4  Cerveau : {MODEL} (environ 7 Go, une seule fois)")
+    step(f"2/5  Cerveau : {MODEL} (environ 7 Go, une seule fois)")
     for m in [MODEL] + ([GAME_MODEL] if GAME_MODEL else []):
         r = subprocess.run([exe, "pull", m])
         if r.returncode != 0:
@@ -71,7 +71,7 @@ def main() -> int:
     except Exception as e:  # noqa: BLE001
         print("Essai impossible :", e)
 
-    step(f"3/4  Voix : Piper {VOICE}")
+    step(f"3/5  Voix : Piper {VOICE}")
     d = BASE / "modeles" / "piper"
     d.mkdir(parents=True, exist_ok=True)
     lang, name, quality = VOICE.split("-", 2)
@@ -88,11 +88,30 @@ def main() -> int:
     except Exception as e:  # noqa: BLE001
         print("Voix : échec :", e)
 
-    step("4/4  Oreilles : Whisper (transcription, ~1,6 Go la première fois)")
+    step("4/5  Oreilles : Whisper (transcription, ~1,6 Go la première fois)")
     t = local_ai.Transcriber()
     t0 = time.monotonic()
     m = t._load()
     print("Whisper OK." if m else "Whisper indisponible : Jarvis utilisera Vosk.", f"({time.monotonic() - t0:.0f} s)")
+
+    step("5/5  Oreille du mot « Jarvis » : grand modèle français (1,4 Go, bien plus précis)")
+    big = BASE / "modeles" / "vosk-fr-grand"
+    if big.is_dir():
+        print("Déjà installé.")
+    else:
+        import zipfile
+        z = BASE / "modeles" / "vosk-fr-grand.zip"
+        try:
+            print("Téléchargement (peut prendre plusieurs minutes)...")
+            urllib.request.urlretrieve("https://alphacephei.com/vosk/models/vosk-model-fr-0.22.zip", z)
+            print("Décompression...")
+            with zipfile.ZipFile(z) as zf:
+                zf.extractall(BASE / "modeles")
+            (BASE / "modeles" / "vosk-model-fr-0.22").rename(big)
+            z.unlink(missing_ok=True)
+            print("Grand modèle installé : Jarvis l'utilisera au prochain démarrage.")
+        except Exception as e:  # noqa: BLE001
+            print("Grand modèle non installé (", e, ") : Jarvis garde le petit modèle.")
 
     envf = BASE / ".env"
     txt = envf.read_text(encoding="utf-8") if envf.is_file() else ""

@@ -248,7 +248,7 @@ button { font: inherit; color: inherit; }
 /* mode allégé (si l'ordinateur peine) : même look, moins d'effets coûteux */
 .lite .panel, .lite .chip, .lite .close, .lite .rail button { backdrop-filter: none; -webkit-backdrop-filter: none; background: linear-gradient(135deg, rgba(8, 28, 58, .82), rgba(3, 12, 28, .78)); }
 .lite .panel::after { display: none; }
-@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; } }
+/* animations toujours jouées : c'est le but de cette interface (même si les animations Windows sont coupées) */
 </style>
 
 <div class="sky"></div>
@@ -370,7 +370,8 @@ const TAU = Math.PI * 2, D2R = Math.PI / 180;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const ease = (t) => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 const easeOut = (t, p = 3) => 1 - Math.pow(1 - t, p);
-const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const REDUCED = false;                               // le globe se joue toujours (voir plus haut)
+const WIN_ANIM_OFF = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /* ================= état : Jarvis en direct, ou exemple ================= */
 let LIVE = false;
@@ -988,7 +989,7 @@ async function whenVisible() {                         // attend que la fenêtre
   sizeCanvas(gc); sizeCanvas(mc);
   await Promise.race([poll(), new Promise((r) => setTimeout(r, 1200))]);
   setLink(); setTarget(); render();
-  report(`page chargée (fenêtre ${document.visibilityState === "visible" ? "visible" : "cachée"})`);
+  report(`page chargée (fenêtre ${document.visibilityState === "visible" ? "visible" : "cachée"}${WIN_ANIM_OFF ? ", animations Windows coupées : globe joué quand même" : ""})`);
   await whenVisible();
   report("animation du globe lancée");
   if (REDUCED) { bootStart = performance.now() - T_END * 1000; }
