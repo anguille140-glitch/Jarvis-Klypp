@@ -169,6 +169,10 @@ class Creator:
         title = (name or desc).strip()
         label = {"site": "ton site", "diaporama": "ton diaporama", "interface": "ton interface",
                  "jeu": "ton jeu", "page": "ta page"}.get(kind, "ta création")
+        if label in self.busy:                           # déjà en fabrication : on ne relance pas
+            secs = int(time.monotonic() - self.busy[label])
+            return (f"DÉJÀ EN COURS : {label} est en fabrication depuis {secs} s (ça continue en arrière-plan, même si le "
+                    f"plan de travail est fermé). Ne relance rien : dis-le simplement.")
 
         def build() -> Path:
             html = self._ask(RULES.format(kind=KINDS[kind], desc=desc.strip()))
@@ -206,6 +210,12 @@ class Creator:
             return "ÉCHEC : aucune création pour l'instant"
         open_file(p)
         return f"Ouvert : {p.stem}"
+
+    def status(self) -> str:
+        """Pour l'IA : ce qui est en train d'être fabriqué."""
+        if not self.busy:
+            return "aucune"
+        return ", ".join(f"{k} (depuis {int(time.monotonic() - v)} s)" for k, v in self.busy.items())
 
     def listing(self) -> str:
         items = all_items()[:15]

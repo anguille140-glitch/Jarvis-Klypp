@@ -1415,6 +1415,8 @@ AUTONOMIE (objectifs et tâches à plusieurs étapes) :
 - Si le nom d'une ROUTINE (ci-dessous) est prononcé (« session CS », « lance mode chill »), exécute ses étapes.
   « crée / enregistre une routine X : ... » -> outil routine. Sans routine connue, déduis les étapes logiques
   (session CS = Steam/CS2 + Discord + FACEIT par exemple) en t'aidant de la MÉMOIRE.
+- Une QUESTION sur une tâche (« tu continues ? », « c'est fini ? », « où tu en es ? ») : réponds, ne relance
+  jamais la tâche. Une création déjà en cours (voir CONTEXTE) ne se relance pas.
 - « crée / fais-moi / code-moi » un site, un diaporama, une présentation, une interface, une appli, un jeu, un CV,
   une affiche... -> outil creation (action creer) avec une description très complète. « change / ajoute ... au
   site / au diaporama » -> creation (action modifier).
@@ -1446,15 +1448,17 @@ CE QUE TU AS APPRIS RÉCEMMENT (auto-amélioration) :
 
 CONTEXTE : nous sommes le {now}. Écrans : {screens}.
 Agenda : {agenda}
+Créations en cours de fabrication (en arrière-plan, elles continuent même si le plan de travail est fermé) : {travaux}
 Fenêtres ouvertes : {windows}
 Applications installées : {apps}
 Musiques sur le PC : {tracks}"""
 
 PRESENCE_SURE = "- On vient de t'appeler explicitement : réponds toujours, ne reste jamais silencieux."
-PRESENCE_DOUTE = ("- Il n'est pas certain que ce message te soit adressé (c'est peut-être une conversation, "
-                  "un jeu, une vidéo, ou du bruit). MAIS si c'est un ordre ou une question qu'on pourrait te poser "
-                  "(ouvrir, couper, mettre, lancer, chercher...), considère qu'il t'est adressé et agis. "
-                  "N'appelle ignorer que si c'est clairement autre chose.")
+PRESENCE_DOUTE = ("- Il n'est pas certain que ce message te soit adressé (c'est peut-être une conversation avec "
+                  "quelqu'un d'autre, un jeu, une vidéo, ou du bruit). Si c'est un ordre ou une question pour toi "
+                  "(ouvrir, couper, mettre, lancer, chercher, « tu peux... », « c'est fini ? »...), agis ou réponds. "
+                  "Sinon appelle ignorer. Ne demande JAMAIS de préciser dans ce cas : une phrase qui n'a pas de sens "
+                  "pour toi ne t'était pas destinée.")
 
 
 CONFIRMS = ["C'est parti.", "Tout de suite.", "C'est lancé.", "Voilà.", "Bien reçu."]
@@ -1637,6 +1641,7 @@ class Brain:
             presence=PRESENCE_SURE if sure else PRESENCE_DOUTE, windows=windows, apps=apps,
             memory=self.actions.memory.text(), routines=self.actions.routines.text(),
             learned=self.actions.auto.learned_text(5), agenda=self._agenda(),
+            travaux=self.actions.creator.status() if self.actions.creator else "aucune",
             tracks=self._tracks())}]}
 
     @staticmethod
