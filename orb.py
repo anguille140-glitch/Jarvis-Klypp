@@ -166,6 +166,29 @@ class Presence:
                 if v is None:
                     return "ÉCHEC : valeur de taille incomprise (petite, grande, plus_petite, ou un pourcentage)"
                 st[action] = v
+            elif action == "ecran":
+                v = _plain(valeur)
+                cur = st.get("ecran") or (os.environ.get("JARVIS_SPHERE_ECRAN") or "principal").strip().lower()
+                if any(w in v for w in ("autre", "change", "switch")):
+                    v = "principal" if cur != "principal" else "secondaire"
+                elif any(w in v for w in ("secondaire", "deuxieme", "second", "deux", "2")):
+                    v = "secondaire"
+                elif "gauche" in v:
+                    v = "gauche"
+                elif "droite" in v:
+                    v = "droite"
+                elif any(w in v for w in ("principal", "premier", "1", "un")):
+                    v = "principal"
+                else:
+                    return "ÉCHEC : écran incompris (principal, secondaire, gauche, droite, autre)"
+                st["ecran"] = v
+            elif action == "position":
+                v = _plain(valeur)
+                vert = "haut" if "haut" in v else "bas" if "bas" in v else "centre"
+                hor = "gauche" if "gauche" in v else "droite" if "droite" in v else "milieu"
+                if vert == "centre" and hor != "milieu":
+                    vert = "centre"
+                st["place"] = "centre" if (vert == "centre" and hor == "milieu") else f"{vert}_{hor}"
             elif action == "fond_noir":
                 v = _percent(valeur, st.get("fond_noir", 100))
                 if v is None:
@@ -179,9 +202,11 @@ class Presence:
             self.last_active = time.monotonic()
         t = st.get("taille") or BASE_SIZE
         tp = st.get("taille_parole")
+        where = (f", {PLACE_NAMES.get(st.get('place', 'centre'), 'au centre')}"
+                 f" de l'écran {st.get('ecran', 'principal')}")
         return (f"OK : sphère {round(t * 100)} % de l'écran"
                 + (f", {round(tp * 100)} % quand je parle" if tp else "")
-                + f", fond noir {st.get('fond_noir', 100)} %")
+                + f", fond noir {st.get('fond_noir', 100)} %" + where)
 
     def set_state(self, mode: str, status: str | None = None) -> None:
         with self.lock:
@@ -242,6 +267,17 @@ except ValueError:
     BASE_SIZE = 0.45
 _WORDS = {"tres_petite": 0.15, "minuscule": 0.12, "petite": 0.25, "moyenne": 0.40, "normale": 0.45,
           "grande": 0.58, "tres_grande": 0.70, "geante": 0.70}
+
+
+PLACE_NAMES = {"centre": "au centre", "haut_gauche": "en haut à gauche", "haut_milieu": "en haut au milieu",
+               "haut_droite": "en haut à droite", "bas_gauche": "en bas à gauche", "bas_milieu": "en bas au milieu",
+               "bas_droite": "en bas à droite", "centre_gauche": "au milieu à gauche",
+               "centre_droite": "au milieu à droite"}
+
+
+def _plain(v: str) -> str:
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFKD", (v or "").lower()) if not unicodedata.combining(c))
 
 
 def _load_style() -> dict:
@@ -310,8 +346,13 @@ def _monitor_rect(which: str) -> tuple[int, int, int, int]:
     user32.EnumDisplayMonitors(None, None, cb, 0)
     rects = rects or [(0, 0, user32.GetSystemMetrics(0), user32.GetSystemMetrics(1))]
     main = next((r for r in rects if r[0] == 0 and r[1] == 0), rects[0])
+    others = sorted((r for r in rects if r != main), key=lambda r: r[0])
+    if which in ("secondaire", "autre", "deuxieme", "second") and others:
+        return others[0]
     if which == "gauche" and len(rects) > 1:
         return min(rects, key=lambda r: r[0])
+    if which == "droite" and len(rects) > 1:
+        return max(rects, key=lambda r: r[0])
     return main
 
 
@@ -348,6 +389,7 @@ class Compositor:
                        "ph": random.uniform(0, 6.28)} for _ in range(70)]
         self.lvl = 0.0
         self.zoom = 1.0                                          # taille actuelle / taille max de la fenêtre
+        self.align = "center"                                    # texte sous la sphère : center | left | right
 
     def frame(self, t: float, dt: float, mode: str, target: float, status: str, sub: str,
               appear: float = 1.0) -> Image.Image:
@@ -379,12 +421,15 @@ class Compositor:
         y0 = self.cy + self.D * z * 0.60
         if e < 0.6:
             return img
-        d.text((self.cx, y0), "J . A . R . V . I . S", fill=(c // 3, c, 255), font=self.f_title, anchor="mm")
+        al = self.align
+        tx = self.cx - self.D * z * .45 if al == "left" else self.cx + self.D * z * .45 if al == "right" else self.cx
+        h1, h2 = {"left": ("lm", "la"), "right": ("rm", "ra")}.get(al, ("mm", "ma"))
+        d.text((tx, y0), "J . A . R . V . I . S", fill=(c // 3, c, 255), font=self.f_title, anchor=h1)
         if status:
-            d.text((self.cx, y0 + 30 * self.scale), status, fill=(60, 120, 255), font=self.f_status, anchor="mm")
+            d.text((tx, y0 + 30 * self.scale), status, fill=(60, 120, 255), font=self.f_status, anchor=h1)
         if sub:
-            d.multiline_text((self.cx, y0 + 70 * self.scale), _wrap(sub, 60), fill=(170, 205, 255),
-                             font=self.f_sub, anchor="ma", align="center")
+            d.multiline_text((tx, y0 + 70 * self.scale), _wrap(sub, 46 if al != "center" else 60),
+                             fill=(170, 205, 255), font=self.f_sub, anchor=h2, align=al)
         return img
 
     @staticmethod
@@ -476,6 +521,47 @@ class Orb:
                 self._create_black()
             except Exception:  # noqa: BLE001
                 log.warning("Fond noir indisponible", exc_info=True)
+        self._placed = None
+        try:
+            self._place()                                         # écran et position choisis à la voix
+        except Exception:  # noqa: BLE001
+            log.warning("Placement de la sphère impossible", exc_info=True)
+
+    def _place(self) -> None:
+        """Met la sphère sur l'écran et à l'endroit demandés à la voix (« va en haut à gauche »...)."""
+        if self.full:
+            return
+        st = self.presence.style
+        which = st.get("ecran") or (os.environ.get("JARVIS_SPHERE_ECRAN") or "principal").strip().lower()
+        place = st.get("place") or "centre"
+        l, t, r, b = _monitor_rect(which)
+        sw, sh = r - l, b - t
+        c = self.comp
+        z = self._target_zoom("idle")
+        reach = max(c.M * z / 2, c.D * z / 2 * .85)              # rayon de la sphère + ses particules
+        m = int(28 * sh / 1080)
+        text_h = c.D * z * .6 + 150 * c.scale                    # titre, état et sous-titre sous la sphère
+        vert, _, hor = place.partition("_")
+        if vert == "haut":
+            cyo = t + m + reach
+        elif vert == "bas":
+            cyo = b - m - text_h
+        else:
+            cyo = t + max(0, int((sh - self.H) * 0.42)) + c.cy
+        if hor == "gauche":
+            cxo = l + m + reach
+        elif hor == "droite":
+            cxo = r - m - reach
+        else:
+            cxo = l + sw / 2
+        c.align = {"gauche": "left", "droite": "right"}.get(hor, "center")
+        self.x, self.y = int(cxo - self.W / 2), int(cyo - c.cy)
+        self.user32.SetWindowPos(self.hwnd, None, self.x, self.y, 0, 0, 0x0001 | 0x0004 | 0x0010)
+        self.screen = (l, t, sw, sh)
+        if self.black_hwnd:                                       # le voile noir suit sur le bon écran
+            self.user32.SetWindowPos(self.black_hwnd, None, l, t, sw, sh, 0x0004 | 0x0010)
+        self._placed = (which, place, st.get("taille"))
+        log.info("Sphère : %s, écran %s.", PLACE_NAMES.get(place, place), which)
 
     def _target_zoom(self, mode: str) -> float:
         st = self.presence.style
@@ -765,6 +851,13 @@ class Orb:
                     nb = p.style.get("fond_noir")
                 if nb is not None:
                     self.black_max = nb / 100                                  # réglé à la voix
+                st = p.style
+                if (st.get("ecran"), st.get("place"), st.get("taille")) != getattr(self, "_placed", None) \
+                        and not self.full:
+                    try:
+                        self._place()                                          # on l'a déplacée à la voix
+                    except Exception:  # noqa: BLE001
+                        self._placed = (st.get("ecran"), st.get("place"), st.get("taille"))
                 tz = self._target_zoom(mode)
                 self.comp.zoom += (tz - self.comp.zoom) * min(1.0, dt * 5)     # changement de taille en douceur
                 if want:

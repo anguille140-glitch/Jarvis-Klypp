@@ -884,11 +884,14 @@ TOOLS = [{"functionDeclarations": [
         {"action": _p("action", enum=["ajouter", "supprimer", "lister"]),
          "quand": _p("AAAA-MM-JJTHH:MM"), "quoi": _p("le rendez-vous / la tâche")}, ["action"]),
     _fn("sphere", "Ton apparence : la SPHÈRE (orbe) de Jarvis. taille = taille normale ; taille_parole = taille "
-        "quand tu parles (« réduis ton orbe quand tu me parles ») ; fond_noir = opacité du fond noir (0 = aucun) ; "
+        "quand tu parles (« réduis ton orbe quand tu me parles ») ; ecran = sur quel écran (principal, secondaire, "
+        "gauche, droite, autre) ; position = où sur l'écran (haut gauche, haut milieu, haut droite, centre, bas "
+        "gauche, bas milieu, bas droite) ; fond_noir = opacité du fond noir (0 = aucun) ; "
         "reinitialiser = réglages d'origine ; etat = réglages actuels. valeur : tres_petite, petite, moyenne, "
         "grande, tres_grande, plus_petite, plus_grande, ou un pourcentage (taille : % de la hauteur de l'écran, "
         "10 à 70 ; fond_noir : 0 à 100). Effet immédiat, gardé pour la suite.",
-        {"action": _p("action", enum=["taille", "taille_parole", "fond_noir", "reinitialiser", "etat"]),
+        {"action": _p("action", enum=["taille", "taille_parole", "ecran", "position", "fond_noir", "reinitialiser",
+                                      "etat"]),
          "valeur": _p("tres_petite | petite | moyenne | grande | tres_grande | plus_petite | plus_grande | nombre")},
         ["action"]),
     _fn("attendre_fenetre", "Attend qu'une fenêtre apparaisse (appli qui se lance, jeu qui charge) avant d'agir "
@@ -1490,6 +1493,30 @@ MUSIC_CMDS = [
     ("suivante", re.compile(r"^(?:musique |chanson )?suivante$|^(?:passe|mets?|zappe)(?: a)? (?:la )?"
                             r"(?:musique |chanson )?suivante$|^(?:change|zappe|passe)(?: de)? " + _MUS + r"$")),
 ]
+ORB_WORDS = re.compile(r"\b(orbe|orbes|orb|arbre|arbres|sphere|boule|bulle|interface)\b")
+SELF_MOVE = re.compile(r"^(?:tu peux |peux tu )?(?:va|vas|aller|deplace toi|deplaces toi|mets toi|met toi|place toi|"
+                       r"bouge toi|positionne toi|file|monte|descends|redescends|reviens|retourne|installe toi)\b")
+ORB_SCREEN = re.compile(r"\b(?:(autre|deuxieme|second|seconde|premier|1er|2e) ecran|ecran (principal|secondaire|de gauche|"
+                        r"de droite|gauche|droite|deuxieme|second|deux|2|premier|un|1|du milieu))\b")
+
+
+def parse_orb_move(text: str) -> list[tuple[str, str]] | None:
+    """« mets ton orbe en haut à gauche », « va sur mon écran secondaire », « déplace-toi en bas au milieu »."""
+    if not (ORB_WORDS.search(text) or SELF_MOVE.match(text)):
+        return None
+    if re.search(r"\b(taille|grand|petit|fond|noir|plus|moins|reduis|agrandis)\b", text):
+        return None                                    # c'est la taille / le fond : l'outil sphere s'en occupe
+    out = []
+    m = ORB_SCREEN.search(text)
+    rest = text
+    if m:
+        out.append(("ecran", m.group(1) or m.group(2)))
+        rest = text[:m.start()] + " " + text[m.end():]
+    if re.search(r"\b(haut|bas|milieu|centre|gauche|droite|coin)\b", rest):
+        out.append(("position", rest))
+    return out or None
+
+
 PLAN_RE = re.compile(r"^(?:tu peux |peux tu |est ce que tu peux |vas y )?(ouvre|ouvres|ouvrir|lance|lances|lancer|"
                      r"affiche|afficher|montre|montrer|active|activer|deploie|mets|met|ferme|fermes|fermer|quitte|"
                      r"quitter|cache|cacher|enleve|eteins|retire)(?: moi| nous)?(?: le| les| mon| ton| la| l| un)? ?"
@@ -1594,6 +1621,14 @@ class Brain:
                 pass
             log.info("Voie express : arrêt d'urgence (%d programme(s) coupé(s))", n)
             self.voice.say("Arrêt d'urgence. Tout est arrêté.")
+            return True
+        orb_cmd = parse_orb_move(text)
+        if orb_cmd:
+            outs = [self.actions.do_sphere(a, v) for a, v in orb_cmd]
+            log.info("Voie express (sphère) : %s -> %s", heard, outs[-1])
+            ok = not any(o.startswith("ÉCHEC") for o in outs)
+            self.voice.say(random.choice(["J'y vais.", "Je me déplace.", "C'est fait.", "Me voilà."]) if ok
+                           else "Je n'ai pas compris où aller.")
             return True
         pm = PLAN_RE.match(text)
         if pm:
