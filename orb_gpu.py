@@ -393,7 +393,12 @@ class GpuOrb(O.Orb):
         if not self.gl.wglMakeCurrent(self.hdc, self.hglrc):
             raise OSError("contexte OpenGL indisponible dans ce fil")
         old_switch = sys.getswitchinterval()
-        sys.setswitchinterval(0.0005)                   # les autres fils de Jarvis ne retardent pas l'image
+        fast = False                                     # bascule rapide entre fils : seulement quand elle s'affiche
+        try:
+            import mode_jeu
+            in_game = mode_jeu.ACTIF.is_set
+        except ImportError:
+            in_game = lambda: False                      # noqa: E731
         t0 = last = time.perf_counter()
         frames, fps_t = 0, t0
         self.fps_logged = False
@@ -426,6 +431,11 @@ class GpuOrb(O.Orb):
                 else:
                     self.fade = max(0.0, self.fade - dt / O.FADE_OUT_S)
                 self._set_black(self.fade)
+                game = in_game()
+                want_fast = self.fade > 0.0 and not game
+                if want_fast != fast:                    # les autres fils de Jarvis ne retardent pas l'image
+                    sys.setswitchinterval(0.0005 if want_fast else old_switch)
+                    fast = want_fast
                 if self.fade <= 0.0:
                     self._show(False)
                     time.sleep(0.05)                     # repos : ne consomme rien
@@ -443,8 +453,9 @@ class GpuOrb(O.Orb):
                     log.exception("Erreur d'animation de la sphère")
                     time.sleep(0.5)
                 spent = time.perf_counter() - start
-                if spent < 0.002:                        # synchro coupée dans le pilote : on ne s'emballe pas
-                    time.sleep(0.002 - spent)
+                floor = (1 / 60 if self.on_top else 1 / 20) if game else 0.002   # en jeu : la carte est au jeu
+                if spent < floor:                        # (et synchro coupée dans le pilote : on ne s'emballe pas)
+                    time.sleep(floor - spent)
                 frames += 1
                 if start - fps_t >= 5:
                     if not self.fps_logged:              # une mesure dans jarvis.log pour vérifier la fluidité

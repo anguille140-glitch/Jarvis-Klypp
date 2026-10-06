@@ -2486,6 +2486,13 @@ def run(device: int, rate: int, user: str = "Monsieur", clap_factory=None, rms=N
         return 1
     voice = Voice()
     voice.ui = ui
+    try:
+        import mode_jeu                                  # un jeu lancé : Jarvis se fait tout petit
+
+        mode_jeu.start(on_enter=ears.release if ears is not None else None,
+                       on_leave=ears.warm if ears is not None else None)
+    except Exception:  # noqa: BLE001
+        log.warning("Mode jeu indisponible", exc_info=True)
     if ears is not None:
         ears.warm()                                       # charge Whisper pendant que tu parles d'autre chose
     brain = Brain(brain_llm, Actions(voice, heavy_llm, user), voice, user, ears, strong=backup_llm)

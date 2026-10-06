@@ -902,7 +902,14 @@ class Orb:
                 except Exception:  # noqa: BLE001
                     log.exception("Erreur d'animation de la sphère")
                     time.sleep(0.5)
-                time.sleep(max(0.001, 1 / FPS - (time.monotonic() - start)))
+                fps = FPS
+                try:
+                    import mode_jeu
+                    if mode_jeu.ACTIF.is_set():
+                        fps = 15                                               # en jeu : la machine est au jeu
+                except ImportError:
+                    pass
+                time.sleep(max(0.001, 1 / fps - (time.monotonic() - start)))
         finally:
             self._show(False)
             self._set_black(0.0)                       # on rend toujours l'écran / le fond d'origine

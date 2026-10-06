@@ -97,6 +97,12 @@ def start_ollama(wait: float = 20.0) -> bool:
 
 def game_running() -> str | None:
     """Nom du jeu lancé (pour libérer la carte graphique), sinon None."""
+    try:
+        import mode_jeu
+
+        return mode_jeu.current()                    # surveillance déjà en route : aucun coût
+    except ImportError:
+        pass
     games = set(GAMES) | {g.strip().lower() for g in _env("JARVIS_JEUX").split(",") if g.strip()}
     try:
         out = subprocess.run(["tasklist", "/FO", "CSV", "/NH"], capture_output=True, timeout=5,
@@ -342,9 +348,30 @@ def is_hallucination(text: str) -> bool:
 class Transcriber:
     def __init__(self) -> None:
         self.model = None
+        self.device = None
         self.lock = threading.Lock()
         self.failed = False
         self.name = _env("JARVIS_WHISPER", "large-v3-turbo")
+
+    @staticmethod
+    def _in_game() -> bool:
+        try:
+            import mode_jeu
+
+            return mode_jeu.ACTIF.is_set()
+        except ImportError:
+            return False
+
+    def release(self) -> None:
+        """Mode jeu : retire Whisper de la carte graphique (un petit modèle processeur prend le relais)."""
+        with self.lock:
+            if self.model is not None and self.device == "cuda":
+                self.model = None
+                self.device = None
+                import gc
+
+                gc.collect()
+                log.info("Mode jeu : Whisper retiré de la carte graphique.")
 
     def _cuda_dlls(self) -> None:
         """Les DLL CUDA installées par pip (nvidia-cublas/cudnn) : on les rend visibles."""
@@ -362,6 +389,11 @@ class Transcriber:
             pass
 
     def _load(self):
+        game = self._in_game()
+        if self.model is not None and game and self.device == "cuda":
+            self.model, self.device = None, None              # partie en cours : pas de carte graphique
+        elif self.model is not None and not game and self.device == "cpu-jeu":
+            self.model, self.device = None, None              # partie finie : on reprend le grand modèle
         if self.model is not None or self.failed:
             return self.model
         try:
@@ -373,20 +405,22 @@ class Transcriber:
         root = str(MODELS_DIR / "whisper")
         self._cuda_dlls()
         for device, ctype in (("cuda", "float16"), ("cpu", "int8")):
-            if device == "cuda" and _env("JARVIS_WHISPER_CPU") in ("1", "oui"):
+            if device == "cuda" and (_env("JARVIS_WHISPER_CPU") in ("1", "oui") or game):
                 continue
             try:
                 name = self.name if device == "cuda" else _env("JARVIS_WHISPER_CPU_MODELE", "small")
                 self.model = WhisperModel(name, device=device, compute_type=ctype, download_root=root)
                 # petit essai : vérifie que la carte graphique marche vraiment
                 list(self.model.transcribe(np.zeros(16000, np.float32), language="fr")[0])
-                log.info("Whisper prêt (%s sur %s).", name, device)
+                self.device = "cpu-jeu" if (game and device == "cpu") else device
+                log.info("Whisper prêt (%s sur %s%s).", name, device, ", mode jeu" if game else "")
                 return self.model
             except Exception as e:  # noqa: BLE001
                 log.info("Whisper sur %s impossible (%s)%s", device, str(e)[:120],
                          " : j'essaie le processeur." if device == "cuda" else "")
                 self.model = None
-        self.failed = True
+        if not game:
+            self.failed = True
         return None
 
     def warm(self) -> None:

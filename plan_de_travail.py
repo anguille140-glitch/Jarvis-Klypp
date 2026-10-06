@@ -165,12 +165,52 @@ class _MEM(ctypes.Structure):
                 ("vt", ctypes.c_ulonglong), ("va", ctypes.c_ulonglong), ("ve", ctypes.c_ulonglong)]
 
 
+class _NVML:
+    """Lecture directe du pilote NVIDIA (nvml.dll) : quelques microsecondes, sans lancer de programme.
+    (nvidia-smi toutes les 2 s pouvait provoquer de petites saccades en jeu.)"""
+
+    class _Util(ctypes.Structure):
+        _fields_ = [("gpu", ctypes.c_uint), ("memory", ctypes.c_uint)]
+
+    class _Mem(ctypes.Structure):
+        _fields_ = [("total", ctypes.c_ulonglong), ("free", ctypes.c_ulonglong), ("used", ctypes.c_ulonglong)]
+
+    def __init__(self) -> None:
+        lib = None
+        for path in ("nvml.dll", os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"),
+                                              "NVIDIA Corporation", "NVSMI", "nvml.dll")):
+            try:
+                lib = ctypes.WinDLL(path)
+                break
+            except OSError:
+                continue
+        if lib is None or lib.nvmlInit_v2() != 0:
+            raise OSError("NVML indisponible")
+        self.lib = lib
+        self.h = ctypes.c_void_p()
+        if lib.nvmlDeviceGetHandleByIndex_v2(0, ctypes.byref(self.h)) != 0:
+            raise OSError("pas de carte NVIDIA")
+        buf = ctypes.create_string_buffer(96)
+        lib.nvmlDeviceGetName(self.h, buf, 96)
+        self.name = buf.value.decode(errors="replace")
+
+    def read(self) -> tuple[float, float, float]:
+        u, m, t = self._Util(), self._Mem(), ctypes.c_uint()
+        if self.lib.nvmlDeviceGetUtilizationRates(self.h, ctypes.byref(u)) != 0:
+            raise OSError("lecture GPU impossible")
+        self.lib.nvmlDeviceGetMemoryInfo(self.h, ctypes.byref(m))
+        self.lib.nvmlDeviceGetTemperature(self.h, 0, ctypes.byref(t))          # 0 = température de la puce
+        return float(u.gpu), float(t.value), 100.0 * m.used / max(1, m.total)
+
+
 class Sensors:
     def __init__(self) -> None:
         self.data: dict = {}
         self._cpu_prev = None
         self._net_prev = None
         self._gpu_t = 0.0
+        self._nvml: _NVML | None = None
+        self._nvml_tried = False
 
     def _cpu(self) -> float | None:
         idle, kern, user = _FT(), _FT(), _FT()
@@ -203,6 +243,23 @@ class Sensors:
         return (now[1] - prev[1]) * 8 / 1e6 / dt, (now[2] - prev[2]) * 8 / 1e6 / dt
 
     def _gpu(self) -> None:
+        if not self._nvml_tried:
+            self._nvml_tried = True
+            try:
+                self._nvml = _NVML()
+            except Exception:  # noqa: BLE001
+                self._nvml = None
+        if self._nvml is not None:
+            try:
+                util, temp, vram = self._nvml.read()
+                self.data.update(gpu=util, temp=temp, vram=round(vram, 1),
+                                 gpu_nom=self._nvml.name.replace("NVIDIA GeForce ", "").replace("NVIDIA ", ""))
+                return
+            except Exception:  # noqa: BLE001
+                self._nvml = None
+        if time.monotonic() - getattr(self, "_smi_t", 0.0) < 10:      # ancienne méthode : rarement
+            return
+        self._smi_t = time.monotonic()
         exe = shutil.which("nvidia-smi") or r"C:\Windows\System32\nvidia-smi.exe"
         try:
             out = subprocess.run([exe, "--query-gpu=name,utilization.gpu,temperature.gpu,memory.used,memory.total",
@@ -228,7 +285,12 @@ class Sensors:
             pass
         d, u = self._net()
         self.data.update(down=round(d, 2), up=round(u, 2))
-        if time.monotonic() - self._gpu_t > 2:
+        try:
+            import mode_jeu
+            every = 5 if mode_jeu.ACTIF.is_set() else 2
+        except ImportError:
+            every = 2
+        if time.monotonic() - self._gpu_t > every:
             self._gpu_t = time.monotonic()
             self._gpu()
         return dict(self.data)
