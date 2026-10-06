@@ -29,11 +29,13 @@ et donne les actions à faire (fichiers à lancer) clairement.
 - `plan_de_travail.py` + `plan_de_travail.html` — cockpit plein écran (globe de chargement, sphère, journal, applis,
   météo open-meteo, agenda + rappels, stats PC, tuiles OpenStreetMap en cache). Le HTML est généré à partir d'un
   gabarit + données du globe ; on peut le modifier directement.
-- `orb.py` — sphère animée du bureau (fenêtre transparente, taille réglable à la voix).
+- `orb.py` — sphère animée du bureau (fenêtre transparente, taille réglable à la voix) ; `orb.create()` choisit
+  `orb_gpu.py` (OpenGL via ctypes, shader `orb_sphere.glsl`, synchro écran 240 Hz) et revient à l'ancienne sphère
+  (numpy) si la carte graphique n'est pas utilisable.
 - `local_music.py` — lecteur MCI (dossier `musique/`). `camera_mode.py` + `camera.html` — contrôle à la main.
 - `hud.py` — ancienne intro (secours).
 
 ## Réglages utiles (`.env`)
 `JARVIS_IA` (hybride | local | local_seul | gemini), `JARVIS_ADRESSE` / `JARVIS_VILLE`, `JARVIS_INTERRUPTION`,
 `JARVIS_PLAN_APPS`, `JARVIS_MUSIQUE_DECALAGE`, `JARVIS_AUTO_AMELIORATION`, `JARVIS_DOSSIERS_AUTORISES`,
-`JARVIS_BIP` (1 = bip quand il écoute), `JARVIS_PLAN_SONS` (bruitages du globe, 0–100), `JARVIS_VOSK` (petit par défaut ; grand = modèle plus précis mais lourd, à charger longtemps).
+`JARVIS_BIP` (1 = bip quand il écoute), `JARVIS_PLAN_SONS` (bruitages du globe, 0–100), `JARVIS_SPHERE_MOTEUR` (cpu = ancienne sphère), `JARVIS_VOSK` (petit par défaut ; grand = modèle plus précis mais lourd, à charger longtemps).

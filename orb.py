@@ -17,6 +17,7 @@ Réglages dans .env :
                   =bureau      seul le fond d'écran Windows devient noir (les fenêtres restent visibles)
                   =non         pas de fond noir
   JARVIS_FOND_NOIR_OPACITE=100 noir total ; 85 = on devine encore l'écran derrière
+  JARVIS_SPHERE_MOTEUR=cpu     ancienne sphère (par défaut : dessinée par la carte graphique, orb_gpu.py)
 """
 from __future__ import annotations
 
@@ -248,8 +249,12 @@ class Presence:
             if mode != "speaking":
                 return mode, 0.0
             if self.env is not None:
-                i = int((now - self.env_t0) * 60)
-                return mode, float(self.env[i]) if 0 <= i < self.env.size else 0.0
+                x = (now - self.env_t0) * 60                   # 60 valeurs/s, lissées entre deux (écran 240 Hz)
+                i = int(x)
+                if not 0 <= i < self.env.size:
+                    return mode, 0.0
+                j = min(i + 1, self.env.size - 1)
+                return mode, float(self.env[i] + (self.env[j] - self.env[i]) * (x - i))
             if self.fake_speech:
                 syll = abs(math.sin(now * 8.3)) * (0.6 + 0.4 * math.sin(now * 2.1))
                 return mode, 0.25 + 0.6 * syll * (0.7 + 0.3 * random.random())
@@ -456,6 +461,21 @@ def _wrap(text: str, width: int) -> str:
     if cur:
         lines.append(cur)
     return "\n".join(lines[:3])
+
+
+def create(presence: Presence | None = None) -> "Orb":
+    """La meilleure sphère possible : dessinée par la carte graphique (fluide, nette, synchro écran),
+    sinon l'ancienne. JARVIS_SPHERE_MOTEUR=cpu dans .env force l'ancienne."""
+    moteur = (os.environ.get("JARVIS_SPHERE_MOTEUR") or "gpu").strip().lower()
+    position = (os.environ.get("JARVIS_SPHERE_POSITION") or "fond").strip().lower()
+    if moteur not in ("cpu", "ancien", "ancienne", "processeur") and position != "papier":
+        try:
+            import orb_gpu
+
+            return orb_gpu.GpuOrb(presence)
+        except Exception as e:  # noqa: BLE001
+            log.warning("Sphère par la carte graphique indisponible (%s) : je garde l'ancienne.", e, exc_info=True)
+    return Orb(presence)
 
 
 class Orb:

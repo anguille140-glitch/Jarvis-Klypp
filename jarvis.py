@@ -992,7 +992,7 @@ def show_orb_demo() -> None:
     try:
         import orb
 
-        sphere = orb.Orb()
+        sphere = orb.create()
     except Exception:  # noqa: BLE001
         log.exception("Sphère de Jarvis indisponible")
         return
@@ -1137,7 +1137,7 @@ def start_assistant() -> int:
         try:
             import orb
 
-            sphere = orb.Orb()
+            sphere = orb.create()
         except Exception:  # noqa: BLE001
             log.exception("Sphère de Jarvis indisponible : je continue sans.")
             sphere = None
