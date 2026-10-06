@@ -138,7 +138,7 @@ class Player:
         return f"Lecture : {path.stem}"
 
     def _apply_volume(self) -> None:
-        v = self.volume * (0.3 if self.ducked else 1.0)
+        v = self.volume * (0.18 if self.ducked else 1.0)       # quand Jarvis écoute / parle : très bas
         try:
             self._mci(f"setaudio {ALIAS} volume to {int(v * 10)}")
         except OSError:
@@ -201,7 +201,7 @@ class Player:
                 self._mci("close all")                 # au cas où : aucun son MCI de Jarvis ne reste
             except OSError:
                 pass
-            self.state, self.current = "stop", None
+            self.state, self.current, self.ducked = "stop", None, False
             return "Musique arrêtée"
         return self._call(f)
 
@@ -215,7 +215,10 @@ class Player:
 
     def duck(self, on: bool) -> None:
         """Baisse la musique pendant que Jarvis parle."""
-        if self.state == "play" and self.ducked != on:
+        if self.state != "play":
+            self.ducked = False if not on else self.ducked     # rien ne joue : on ne garde pas le volume baissé
+            return
+        if self.ducked != on:
             self.ducked = on
             self._call(self._apply_volume, timeout=1.0)
 

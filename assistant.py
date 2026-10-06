@@ -1445,7 +1445,9 @@ Musiques sur le PC : {tracks}"""
 
 PRESENCE_SURE = "- On vient de t'appeler explicitement : réponds toujours, ne reste jamais silencieux."
 PRESENCE_DOUTE = ("- Il n'est pas certain que ce message te soit adressé (c'est peut-être une conversation, "
-                  "un jeu, une vidéo, ou du bruit). S'il ne s'adresse pas à toi, appelle l'outil ignorer.")
+                  "un jeu, une vidéo, ou du bruit). MAIS si c'est un ordre ou une question qu'on pourrait te poser "
+                  "(ouvrir, couper, mettre, lancer, chercher...), considère qu'il t'est adressé et agis. "
+                  "N'appelle ignorer que si c'est clairement autre chose.")
 
 
 CONFIRMS = ["C'est parti.", "Tout de suite.", "C'est lancé.", "Voilà.", "Bien reçu."]
@@ -1493,6 +1495,45 @@ MUSIC_CMDS = [
     ("suivante", re.compile(r"^(?:musique |chanson )?suivante$|^(?:passe|mets?|zappe)(?: a)? (?:la )?"
                             r"(?:musique |chanson )?suivante$|^(?:change|zappe|passe)(?: de)? " + _MUS + r"$")),
 ]
+# --- compréhension tolérante (transcription imparfaite, musique en fond) ---
+_MUSIC_N = r"(?:musique|musiques|music|zik|zic|zique|chanson|morceau|playlist|intro|son de l intro)"
+_STOP_V = r"(?:coup\w*|arret\w*|stop\w*|ferm\w*|etein\w*|enlev\w*|vire|virer|cess\w*|tais\w*|silence|kill)"
+_PLAN_N = r"(?:plans?|plants?|planche|poste|espace|bureau|table|mode|plan d)\s+(?:de\s+|d\s+|du\s+)?(?:travai\w*|taf|boulot|travaux)"
+_OPEN_V = r"(?:ouv\w*|lanc\w*|affich\w*|montr\w*|activ\w*|deploi\w*|deploy\w*|met|mets|demarr\w*|allum\w*|sors|sort|amene|passe en|go)"
+_CLOSE_V = r"(?:ferm\w*|quitt\w*|cach\w*|enlev\w*|etein\w*|retir\w*|coup\w*|arret\w*|vire)"
+
+
+def loose_intent(text: str) -> tuple[str, str] | None:
+    """Comprend les ordres courants même mal transcrits : (« musique », stop|pause|reprendre|suivante)
+    ou (« plan », ouvrir|fermer). None si rien de sûr (l'IA s'en charge)."""
+    words = text.split()
+    if not words or len(words) > 9 or re.search(r"\b(puis|ensuite|apres|quand|si)\b", text):
+        return None
+    if re.search(_PLAN_N, text):
+        if re.search(rf"\b{_CLOSE_V}\b", text):
+            return ("plan", "fermer")
+        if re.search(rf"\b{_OPEN_V}\b", text) or len(words) <= 4:
+            return ("plan", "ouvrir")                 # « plan de travail » / « mode travail » tout court
+    if re.search(rf"\b{_MUSIC_N}\b", text) or len(words) <= 2:
+        if re.search(r"\b(?:mets|met|lance|joue|ajoute)\s+(?:de la|une|ma|la|des)\b", text) and \
+                not re.search(rf"\b{_STOP_V}\b", text):
+            return None                               # « mets de la musique » : c'est l'inverse
+        if re.search(r"\bpause\b", text):
+            return ("musique", "pause")
+        if re.search(rf"\b{_STOP_V}\b", text):
+            return ("musique", "stop")
+        if re.search(r"\b(?:repren\w*|relanc\w*|remet\w*|redemarr\w*)\b", text):
+            return ("musique", "reprendre")
+        if re.search(r"\b(?:suivant\w*|next|zapp\w*|change\w*|passe)\b", text):
+            return ("musique", "suivante")
+    return None
+
+
+# mots qui font penser à un ordre court : on retente avec Whisper si Vosk a mal transcrit
+LIKELY_CMD = re.compile(r"\b(musique|music|zik|chanson|morceau|intro|plan|plans|plant|travail\w*|taf|orbe|arbre|sphere|"
+                        r"ecran|stop|coupe|pause|camera)\b")
+
+
 ORB_WORDS = re.compile(r"\b(orbe|orbes|orb|arbre|arbres|sphere|boule|bulle|interface)\b")
 SELF_MOVE = re.compile(r"^(?:tu peux |peux tu )?(?:va|vas|aller|deplace toi|deplaces toi|mets toi|met toi|place toi|"
                        r"bouge toi|positionne toi|file|monte|descends|redescends|reviens|retourne|installe toi)\b")
@@ -1535,6 +1576,7 @@ GOAL_RE = re.compile(r"\b(prepare|preparer|organise|organiser|occupe|configure|c
                      r"range|ranger|mode|session|routine|setup|tout|toutes|tous|automatise|fais en sorte)\b")
 # « c'est fait » / « voilà » / « j'ai coupé »... et une demande d'action
 DONE_RE = re.compile(r"\b(c est fait|voila|c est bon|c est parti|c est lance|c est coupe|c est arrete|tout de suite|"
+                     r"je lance|je l ouvre|j ouvre|je coupe|je ferme|je m en charge|je passe en|je bascule|je deploie|"
                      r"j ai (?:coupe|arrete|ferme|ouvert|lance|mis|baisse|monte|deplace|eteint|supprime|cree|change)|"
                      r"je (?:coupe|ferme|lance|mets|baisse|monte|l ouvre|la ferme|la coupe|m en occupe))\b")
 ACTION_RE = re.compile(r"^(?:jarvis )?(?:\w+ )?(?:coupe|arrete|stop|ferme|ouvre|lance|mets|met|baisse|monte|"
@@ -1610,8 +1652,8 @@ class Brain:
     def quick(self, heard: str, words: set[str]) -> bool:
         """Voie express SANS IA : « ouvre Discord », « lance Spotify », « ouvre YouTube »...
         Seulement si la phrase est simple et le nom reconnu avec certitude. Sinon -> Gemini."""
-        _, rest = wake_score(heard, words)
-        text = norm(rest)
+        sc, rest = wake_score(heard, words)
+        text = norm(rest) if sc >= WAKE_MAYBE else norm(heard)   # pas de « Jarvis » : on ne retire aucun mot
         if STOP_ALL_RE.search(text):                       # « Jarvis, stop total » : arrêt d'urgence
             n = self.actions.auto.emergency_stop()
             try:
@@ -1631,16 +1673,20 @@ class Brain:
                            else "Je n'ai pas compris où aller.")
             return True
         pm = PLAN_RE.match(text)
-        if pm:
-            ouvrir = pm.group(1) not in ("ferme", "fermer", "quitte", "quitter", "cache", "cacher", "enleve", "eteins")
+        li = loose_intent(text)
+        if pm or (li and li[0] == "plan"):
+            ouvrir = (pm.group(1) not in ("ferme", "fermer", "quitte", "quitter", "cache", "cacher", "enleve",
+                                          "eteins")) if pm else li[1] == "ouvrir"
             out = self.actions.do_plan_de_travail("ouvrir" if ouvrir else "fermer")
             log.info("Voie express (plan de travail) : %s -> %s", heard, out)
             self.voice.say(("Plan de travail en cours de déploiement." if ouvrir else "Plan de travail fermé.")
                            if out.startswith("OK") else "Je n'arrive pas à ouvrir le plan de travail : "
                            + out.replace("ÉCHEC :", "").strip() + ".")
             return True
-        for action, rx in MUSIC_CMDS:
-            if rx.match(text):
+        music_action = next((a for a, rx in MUSIC_CMDS if rx.match(text)), None) or \
+            (li[1] if li and li[0] == "musique" else None)
+        for action in ([music_action] if music_action else []):
+            if True:
                 out = self._quick_music(action)
                 if out is None:                        # pas de musique de Jarvis en cours : on laisse l'IA voir
                     break
@@ -1785,8 +1831,7 @@ class Brain:
                 calls = [p["functionCall"] for p in parts if "functionCall" in p]
                 text = " ".join(p["text"] for p in parts if p.get("text") and not p.get("thought")).strip()
                 if not calls:
-                    if (not trace and not nudged and DONE_RE.search(norm(text))
-                            and ACTION_RE.search(norm(heard))):
+                    if not trace and not nudged and DONE_RE.search(norm(text)):
                         # il dit « c'est fait » sans avoir rien fait : on l'oblige à agir pour de vrai
                         nudged = True
                         log.info("(réponse sans action : je lui demande d'agir vraiment)")
@@ -2331,6 +2376,26 @@ def _migrate_local_setting() -> None:
         pass
 
 
+def _music_playing() -> bool:
+    try:
+        import local_music
+        p = local_music._player
+        return bool(p is not None and p.state == "play")
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _duck_music(on: bool) -> None:
+    """Baisse la musique de Jarvis pendant qu'il t'écoute (et la remonte ensuite)."""
+    try:
+        import local_music
+        p = local_music._player
+        if p is not None:
+            p.duck(on)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def pick_ai(status):
     """Choisit le cerveau. Renvoie (cerveau principal, cerveau des travaux, transcripteur Whisper, cerveau de secours).
     JARVIS_IA :
@@ -2441,7 +2506,11 @@ def run(device: int, rate: int, user: str = "Monsieur", clap_factory=None, rms=N
             if mode == "stop":
                 return _shutdown(voice, status)
             # « suite » (pas de Jarvis) ou mot mal reconnu : Gemini vérifie que ça lui est adressé
-            sure = mode == "clap" or score >= WAKE_SURE
+            music_on = _music_playing()
+            # musique en fond : « Jarvis » est moins net -> on fait confiance au mot à moitié reconnu
+            sure = mode == "clap" or score >= WAKE_SURE or (mode == "jarvis" and music_on and score >= WAKE_MAYBE)
+            if mode in ("jarvis", "clap"):
+                _duck_music(True)                         # la musique baisse : il t'entend bien
             if sure:
                 # bip SANS couper le micro : tu peux enchaîner ta demande tout de suite
                 threading.Thread(target=play, args=(BEEP_LISTEN,), daemon=True).start()
@@ -2450,6 +2519,7 @@ def run(device: int, rate: int, user: str = "Monsieur", clap_factory=None, rms=N
             if not has_request:
                 if sure and mode != "suite":
                     play(BEEP_CANCEL)
+                _duck_music(False)
                 status("idle")
                 ear.reset()
                 continue
@@ -2470,10 +2540,18 @@ def run(device: int, rate: int, user: str = "Monsieur", clap_factory=None, rms=N
             def work(wav=wav, heard=heard, sure=sure, result=result) -> None:
                 voice.bind()                              # si tu le coupes, cette réponse est annulée
                 try:
-                    result["answered"] = ((sure and brain.quick(heard, words))
-                                          or brain.handle(wav, heard, sure=sure))
+                    done = brain.quick(heard, words)      # ordres courants : même si « Jarvis » était flou
+                    if not done and brain.ears is not None and LIKELY_CMD.search(norm(heard)):
+                        better = brain.ears(wav)          # 2e écoute, plus précise (Whisper)
+                        if better and norm(better) != norm(heard):
+                            log.info("Réécoute (Whisper) : %s", better)
+                            done = brain.quick(better, words)
+                            heard = better if not done else heard
+                    result["answered"] = done or brain.handle(wav, heard, sure=sure or done)
                 except Exception:  # noqa: BLE001
                     log.exception("Erreur pendant la demande")
+                finally:
+                    _duck_music(False)
 
             task = threading.Thread(target=work, daemon=True)
             task.start()
