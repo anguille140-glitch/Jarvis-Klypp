@@ -878,6 +878,9 @@ TOOLS = [{"functionDeclarations": [
     _fn("plan_de_travail", "Le PLAN DE TRAVAIL : interface plein écran de Jarvis (globe, sphère, conversation, applis, "
         "météo, agenda, état du PC). « ouvre / affiche le plan de travail », « ferme le plan de travail ».",
         {"action": _p("action", enum=["ouvrir", "fermer"])}, ["action"]),
+    _fn("ma_position", "Enregistre l'adresse ou la ville de l'utilisateur (« j'habite à ... », « mon adresse est ... ») : "
+        "sert à la météo et au globe du plan de travail. Reste sur son PC.",
+        {"adresse": _p("adresse complète ou ville, telle qu'il l'a dite")}, ["adresse"]),
     _fn("agenda", "Agenda de l'utilisateur (affiché sur le plan de travail, avec rappel vocal 10 min avant). "
         "ajouter : quand (date et heure AAAA-MM-JJTHH:MM, calculée d'après la date du jour) + quoi. "
         "supprimer : quoi (ou la date). lister.",
@@ -1308,6 +1311,10 @@ class Actions:
         import plan_de_travail
         ws = plan_de_travail.workspace()
         return ws.open() if action == "ouvrir" else ws.close()
+
+    def do_ma_position(self, adresse: str) -> str:
+        import plan_de_travail
+        return plan_de_travail.set_address(adresse)
 
     def do_agenda(self, action: str, quand: str = "", quoi: str = "") -> str:
         import plan_de_travail

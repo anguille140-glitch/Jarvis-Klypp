@@ -260,11 +260,59 @@ def _geocode_address(addr: str) -> dict:
             "lat": float(r["lat"]), "lon": float(r["lon"])}
 
 
+def env_setting(name: str) -> str:
+    """Lit le réglage dans .env à chaque fois (pris en compte sans redémarrer Jarvis)."""
+    try:
+        for line in (BASE / ".env").read_text(encoding="utf-8-sig").splitlines():
+            k, sep, v = line.partition("=")
+            if sep and k.strip() == name:
+                return v.strip().strip('"').strip("'")
+    except OSError:
+        pass
+    return (os.environ.get(name) or "").strip()
+
+
+def save_setting(name: str, value: str) -> None:
+    """Écrit (ou remplace) une ligne de réglage dans .env, sans toucher au reste."""
+    f = BASE / ".env"
+    lines = f.read_text(encoding="utf-8-sig").splitlines() if f.is_file() else []
+    out, done = [], False
+    for line in lines:
+        if line.partition("=")[0].strip() == name:
+            if not done:
+                out.append(f"{name}={value}")
+                done = True
+            continue
+        out.append(line)
+    if not done:
+        out.append(f"{name}={value}")
+    f.write_text("\n".join(out) + "\n", encoding="utf-8")
+    os.environ[name] = value
+
+
+def set_address(adresse: str) -> str:
+    """« Jarvis, mon adresse est ... » : enregistrée dans .env (reste sur ton PC), position recalculée."""
+    adresse = (adresse or "").strip()
+    if len(adresse) < 3:
+        return "ÉCHEC : adresse vide"
+    try:
+        lieu = _geocode_address(adresse)
+    except Exception as e:  # noqa: BLE001
+        return f"ÉCHEC : adresse introuvable ({e})"
+    save_setting("JARVIS_ADRESSE", adresse)
+    if lieu.get("ville"):
+        save_setting("JARVIS_VILLE", lieu["ville"])
+    (CACHE / "lieu.json").unlink(missing_ok=True)
+    workspace().state["lieu"] = locate()
+    log.info("Position enregistrée : %s (%.4f, %.4f)", lieu.get("ville"), lieu["lat"], lieu["lon"])
+    return f"OK : position enregistrée ({lieu.get('ville', '')})"
+
+
 def locate() -> dict:
     """Ta position : JARVIS_ADRESSE (précise, reste sur ton PC) > JARVIS_VILLE > approximation par internet."""
     f = CACHE / "lieu.json"
-    addr = (os.environ.get("JARVIS_ADRESSE") or "").strip()
-    city = (os.environ.get("JARVIS_VILLE") or "").strip()
+    addr = env_setting("JARVIS_ADRESSE")
+    city = env_setting("JARVIS_VILLE")
     key = addr or city
     try:
         cached = json.loads(f.read_text(encoding="utf-8"))
@@ -674,8 +722,7 @@ class Workspace:
                 "--disable-extensions", "--disable-sync", "--disable-features=Translate,MediaRouter",
                 "--hide-crash-restore-bubble", f"--window-position={l},{t}", f"--window-size={r - l},{b - t}",
                 "--start-fullscreen", f"--app={url}"]
-        if not self.state.get("lieu"):
-            self.state["lieu"] = locate()                   # position prête avant le globe
+        self.state["lieu"] = locate()                       # position à jour avant le globe (cache disque)
         self.open_flag.set()
         threading.Thread(target=self._collect, daemon=True).start()
         try:
