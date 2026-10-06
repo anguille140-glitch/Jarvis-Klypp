@@ -39,3 +39,14 @@ et donne les actions à faire (fichiers à lancer) clairement.
 `JARVIS_IA` (hybride | local | local_seul | gemini), `JARVIS_ADRESSE` / `JARVIS_VILLE`, `JARVIS_INTERRUPTION`,
 `JARVIS_PLAN_APPS`, `JARVIS_MUSIQUE_DECALAGE`, `JARVIS_AUTO_AMELIORATION`, `JARVIS_DOSSIERS_AUTORISES`,
 `JARVIS_BIP` (1 = bip quand il écoute), `JARVIS_PLAN_SONS` (bruitages du globe, 0–100), `JARVIS_SPHERE_MOTEUR` (cpu = ancienne sphère), `JARVIS_VOSK` (petit par défaut ; grand = modèle plus précis mais lourd, à charger longtemps).
+
+## Où on en est (à vérifier sur le PC de Klypp)
+- **Sphère OpenGL** (`orb_gpu.py`) : jamais testée sur un vrai Windows. Vérifier dans `jarvis.log` la ligne
+  « Sphère dessinée par la carte graphique » et « Sphère : N images/s » (attendu ≈ 240). Si carré noir autour de la
+  sphère ou erreur : regarder la transparence DWM (`_init_gl`), sinon `JARVIS_SPHERE_MOTEUR=cpu` en secours.
+- **Animation du plan de travail** (globe → carte holographique 3D + bruitages WebAudio) : à valider en vrai,
+  notamment le son (Chrome lancé avec `--autoplay-policy=no-user-gesture-required`) et la fluidité de la carte.
+- **Position** : la puce de position est cliquable pour corriger l'adresse (`JARVIS_ADRESSE` dans `.env`, jamais
+  dans le code).
+- **Idée en attente** : brancher Claude Code à Jarvis (« Jarvis, répare-toi ») avec garde-fous : sauvegarde avant
+  changement, vérification que le code se lance, confirmation vocale, interdiction de toucher `.env` et `_garde.py`.
