@@ -822,7 +822,8 @@ TOOLS = [{"functionDeclarations": [
     _fn("camera", "Mode caméra façon Iron Man : scan du visage puis contrôle du PC à la main. "
         "« active la caméra », « coupe la caméra », « réenregistre mon visage ».",
         {"action": _p("action", enum=["activer", "desactiver", "reenregistrer_visage"])}, ["action"]),
-    _fn("musique", "Musique STOCKÉE SUR LE PC (liste « Musiques sur le PC » ci-dessous). À préférer à YouTube quand "
+    _fn("musique", "Musique jouée par Jarvis (dont la MUSIQUE DE L'INTRO) et musique STOCKÉE SUR LE PC (liste « Musiques "
+        "sur le PC »). « coupe / arrête la musique (de l'intro) » -> action stop. À préférer à YouTube quand "
         "un morceau correspond. jouer (avec recherche = titre/artiste, vide = tout le dossier), aleatoire, pause, "
         "reprendre, suivante, stop, volume (valeur 0-100).",
         {"action": _p("action", enum=["jouer", "aleatoire", "pause", "reprendre", "suivante", "stop", "volume"]),
@@ -1342,6 +1343,7 @@ AGIR :
   précision que si deux actions très différentes sont aussi probables l'une que l'autre.
 - Agis directement avec les outils, sans demander de précisions inutiles. Si plusieurs actions sont demandées,
   appelle tous les outils nécessaires EN MÊME TEMPS dans une seule réponse.
+- Ne dis JAMAIS « c'est fait » si tu n'as pas appelé d'outil : sans outil, rien ne se passe sur le PC.
 - Si un outil renvoie ÉCHEC, essaie une autre approche (autre nom, recherche web...) avant d'abandonner.
 - « mets / joue / lance » + musique ou artiste : d'abord l'outil musique s'il y a un morceau correspondant sur le PC
   (« ma musique », « ma playlist » = tout le dossier), sinon jouer_youtube.
@@ -1431,6 +1433,16 @@ SCREEN_RE = re.compile(
     r"(?: s il te plait| stp| merci)?$")
 SCREEN_FILLER = {"ca", "cela", "ceci", "la", "le", "les", "l", "cette", "fenetre", "celle", "ci", "moi",
                  "d", "de", "du", "sur", "vers", "a", "dans", "en", "pour", "page", "onglet"}
+# Musique de Jarvis (intro, dossier musique) : pilotée directement, sans IA -> fiable et instantané
+_MUS = r"(?:la |ma |le |cette |l )?(?:musique|chanson|son|zik|morceau|playlist)(?: de l intro| d intro| de l introduction)?"
+MUSIC_CMDS = [
+    ("stop", re.compile(r"^(?:coupe|couper|arrete|arreter|stop|stoppe|eteins|eteindre|ferme|fermer|enleve|vire)"
+                        r"(?: moi)? " + _MUS + r"$|^(?:stop|coupe) (?:l )?intro$")),
+    ("pause", re.compile(r"^(?:mets?|met) (?:en )?pause(?: " + _MUS + r")?$|^pause(?: " + _MUS + r")?$")),
+    ("reprendre", re.compile(r"^(?:reprends?|relance|remets?|redemarre)(?: moi)? " + _MUS + r"$")),
+    ("suivante", re.compile(r"^(?:musique |chanson )?suivante$|^(?:passe|mets?|zappe)(?: a)? (?:la )?"
+                            r"(?:musique |chanson )?suivante$|^(?:change|zappe|passe)(?: de)? " + _MUS + r"$")),
+]
 STOP_ALL_RE = re.compile(r"\b(stop total|stop tout|stoppe tout|arret d urgence|arrete tout|arrete toi tout de suite|"
                          r"urgence stop|coupe tout)\b")
 QUICK_MIN_SCORE = 0.88      # sûr à 88 % du nom de l'appli : sinon on laisse Gemini comprendre
@@ -1442,6 +1454,13 @@ MULTI_STEP = re.compile(r"\b(et|puis|ensuite|apres|avant|quand|si)\b")
 # un objectif plutôt qu'une action : Jarvis enchaîne les étapes et ne répond qu'à la fin
 GOAL_RE = re.compile(r"\b(prepare|preparer|organise|organiser|occupe|configure|configurer|installe|installer|"
                      r"range|ranger|mode|session|routine|setup|tout|toutes|tous|automatise|fais en sorte)\b")
+# « c'est fait » / « voilà » / « j'ai coupé »... et une demande d'action
+DONE_RE = re.compile(r"\b(c est fait|voila|c est bon|c est parti|c est lance|c est coupe|c est arrete|tout de suite|"
+                     r"j ai (?:coupe|arrete|ferme|ouvert|lance|mis|baisse|monte|deplace|eteint|supprime|cree|change)|"
+                     r"je (?:coupe|ferme|lance|mets|baisse|monte|l ouvre|la ferme|la coupe|m en occupe))\b")
+ACTION_RE = re.compile(r"^(?:jarvis )?(?:\w+ )?(?:coupe|arrete|stop|ferme|ouvre|lance|mets|met|baisse|monte|"
+                       r"eteins|allume|deplace|change|passe|joue|cree|fais|supprime|vire|enleve|demarre|redemarre|"
+                       r"active|desactive|minimise|agrandis|reduis|tape|ecris|clique|cherche)\b")
 MAX_STEPS = int(_env("JARVIS_ETAPES_MAX", "20") or 20)     # tours d'outils max pour une seule demande
 
 
@@ -1510,6 +1529,16 @@ class Brain:
             log.info("Voie express : arrêt d'urgence (%d programme(s) coupé(s))", n)
             self.voice.say("Arrêt d'urgence. Tout est arrêté.")
             return True
+        for action, rx in MUSIC_CMDS:
+            if rx.match(text):
+                out = self._quick_music(action)
+                if out is None:                        # pas de musique de Jarvis en cours : on laisse l'IA voir
+                    break
+                log.info("Voie express (musique) : %s -> %s", heard, out)
+                self.voice.say({"stop": "Musique coupée.", "pause": "En pause.", "reprendre": "C'est reparti.",
+                                "suivante": "Morceau suivant."}[action] if not out.startswith("ÉCHEC")
+                               else "Je n'arrive pas à contrôler la musique.")
+                return True
         cam = CAMERA_RE.search(text)
         if cam:
             on = cam.group(1) in ("active", "activer", "lance", "lancer", "allume", "demarre", "ouvre", "mode")
@@ -1547,6 +1576,21 @@ class Brain:
         self.turns = self.turns[-10:]
         self.voice.say(reply)
         return True
+
+    @staticmethod
+    def _quick_music(action: str) -> str | None:
+        try:
+            import local_music
+            p = local_music._player
+        except Exception:  # noqa: BLE001
+            return None
+        if p is None or not (p.active or p.state == "ready"):
+            return None
+        if action == "reprendre":
+            return p.resume() if p.state == "pause" else "déjà en cours"
+        if action == "pause":
+            return p.pause() if p.state == "play" else "déjà en pause"
+        return {"stop": p.stop, "suivante": p.next}[action]()
 
     def _quick_screen(self, heard: str, m: re.Match) -> bool:
         """Change une fenêtre d'écran, sans passer par l'IA."""
@@ -1599,7 +1643,7 @@ class Brain:
         trace: list[dict] = []
         final_text, ignored = "", False
         try:
-            announced = False
+            announced, nudged = False, False
             for step in range(MAX_STEPS):
                 if step == 2 and not announced and not self.voice.stale():
                     announced = True                     # tâche longue : on prévient, puis on continue
@@ -1618,6 +1662,16 @@ class Brain:
                 calls = [p["functionCall"] for p in parts if "functionCall" in p]
                 text = " ".join(p["text"] for p in parts if p.get("text") and not p.get("thought")).strip()
                 if not calls:
+                    if (not trace and not nudged and DONE_RE.search(norm(text))
+                            and ACTION_RE.search(norm(heard))):
+                        # il dit « c'est fait » sans avoir rien fait : on l'oblige à agir pour de vrai
+                        nudged = True
+                        log.info("(réponse sans action : je lui demande d'agir vraiment)")
+                        turn.append({"role": "user", "parts": [{"text": (
+                            "(Système : tu n'as appelé AUCUN outil, donc rien n'a été fait sur le PC. Si une action "
+                            "était demandée, appelle l'outil adapté MAINTENANT. Sinon, dis honnêtement que tu ne l'as "
+                            "pas fait.)")}]})
+                        continue
                     final_text = text
                     break
                 if self.voice.stale():                  # tu as redit « Jarvis » entre-temps : on abandonne

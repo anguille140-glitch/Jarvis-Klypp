@@ -197,6 +197,10 @@ class Player:
                 self._mci(f"close {ALIAS}")
             except OSError:
                 pass
+            try:
+                self._mci("close all")                 # au cas où : aucun son MCI de Jarvis ne reste
+            except OSError:
+                pass
             self.state, self.current = "stop", None
             return "Musique arrêtée"
         return self._call(f)
