@@ -81,6 +81,13 @@ button { font: inherit; color: inherit; }
 .chip.live::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); margin-right: 8px; box-shadow: 0 0 8px var(--ok); vertical-align: 1px; animation: blink 1.6s infinite; }
 @keyframes blink { 50% { opacity: .35; } }
 .chip.demo { color: var(--warn); border-color: rgba(255, 182, 72, .35); }
+.chip.where { cursor: pointer; font-family: var(--f-data); }
+.chip.where:hover { color: var(--arc); border-color: var(--arc); }
+.chip.approx { color: var(--warn); border-color: rgba(255, 182, 72, .55); animation: blink 2.4s infinite; }
+.fixpos { display: flex; gap: 6px; align-items: center; }
+.fixpos[hidden] { display: none; }
+.fixpos input { width: 320px; max-width: 60vw; background: rgba(1, 6, 16, .8); border: 1px solid var(--arc); color: var(--ink); padding: 7px 10px; font: 13px var(--f-body); }
+.fixpos button { background: rgba(79, 216, 255, .2); border: 1px solid var(--arc); color: var(--arc-hot); padding: 6px 10px; cursor: pointer; font: 700 11px var(--f-data); letter-spacing: .12em; }
 .sig { display: flex; gap: 3px; align-items: flex-end; height: 18px; }
 .sig i { width: 4px; background: var(--arc); box-shadow: 0 0 6px var(--arc); animation: sig 1.4s ease-in-out infinite; }
 .sig i:nth-child(1) { height: 30%; } .sig i:nth-child(2) { height: 55%; animation-delay: .15s; } .sig i:nth-child(3) { height: 80%; animation-delay: .3s; } .sig i:nth-child(4) { height: 100%; animation-delay: .45s; }
@@ -287,7 +294,12 @@ button { font: inherit; color: inherit; }
     <div class="mark" aria-hidden="true"></div>
     <div class="brand">J.A.R.V.I.S<small>PLAN DE TRAVAIL · <span id="who">MONSIEUR</span></small></div>
     <span class="chip live" id="link">SYSTÈMES EN LIGNE</span>
-    <span class="chip" id="where">LOCALISATION…</span>
+    <button class="chip where" id="where" title="Corriger ma position">LOCALISATION…</button>
+    <form class="fixpos" id="fixpos" hidden>
+      <input id="fixIn" autocomplete="off" placeholder="Ton adresse ou ta ville (reste sur ton PC)" aria-label="Ton adresse ou ta ville">
+      <button type="submit">RECENTRER</button>
+      <button type="button" id="fixNo" aria-label="Annuler">✕</button>
+    </form>
     <div class="sig" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
     <div class="spacer"></div>
     <div class="clock"><span id="hm">--:--</span><em id="ss">00</em><small id="date">—</small></div>
@@ -402,9 +414,10 @@ async function poll() {
     const r = await fetch("etat", { cache: "no-store" });
     if (!r.ok) throw 0;
     const j = await r.json();
-    if (bootSeq === null) bootSeq = j.boot ?? 0;
-    else if ((j.boot ?? 0) !== bootSeq) { bootSeq = j.boot; replayBoot(); }
-    Object.assign(S, j);
+    const replay = bootSeq !== null && (j.boot ?? 0) !== bootSeq;
+    if (bootSeq === null || replay) bootSeq = j.boot ?? 0;
+    Object.assign(S, j);                       // d'abord la nouvelle position, ensuite le globe
+    if (replay) replayBoot();
     if (!LIVE) { LIVE = true; setLink(); netHist.length = 0; for (let i = 0; i < 70; i++) netHist.push({ d: 0, u: 0 }); }
     failN = 0;
   } catch (e) {
@@ -581,7 +594,8 @@ function drawMap(zf, alpha) {
   m.restore();
   $("#osm").style.opacity = mapOK ? .9 : 0;
 }
-function drawBoot(now) {
+function drawBoot() {
+  const now = performance.now();                      // même horloge que skip() et finishBoot()
   if (!bootStart) bootStart = now;
   const t = (now - bootStart) / 1000;
   const W = gc.width, H = gc.height, px = W / Math.max(1, gc.clientWidth);
@@ -869,7 +883,10 @@ function render() {
   $("#date").textContent = now.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
   $("#who").textContent = (S.user || "Monsieur").toUpperCase();
   const L = S.lieu || {};
-  $("#where").textContent = L.ville ? `${L.ville.toUpperCase()} · ${(+L.lat).toFixed(2)}° ${(+L.lon).toFixed(2)}°` : "LOCALISATION…";
+  const approx = L.source === "internet" || L.source === "defaut";
+  $("#where").textContent = (L.ville ? `${L.ville.toUpperCase()} · ${(+L.lat).toFixed(2)}° ${(+L.lon).toFixed(2)}°` : "POSITION INCONNUE")
+    + (approx && LIVE ? " · APPROX. — CLIQUE POUR CORRIGER" : "");
+  $("#where").classList.toggle("approx", approx && LIVE);
   $("#state").textContent = { idle: "En ligne", listening: "J'écoute", thinking: "Analyse", speaking: "Réponse" }[S.mode] || "En ligne";
   $("#say").textContent = S.mode !== "idle" ? (S.sub || "") : "";
   $("#roIa").textContent = S.ia || "GEMINI · HYBRIDE";
@@ -976,6 +993,15 @@ $("#ask").addEventListener("submit", (e) => {
   if (LIVE) send({ type: "demande", texte: v });
   else { S.log.push({ qui: "toi", texte: v }, { qui: "jarvis", texte: "Aperçu : relié à ton PC, Jarvis te répondrait ici." }); render(); }
 });
+$("#where").addEventListener("click", () => { $("#fixpos").hidden = false; $("#fixIn").focus(); });
+$("#fixNo").addEventListener("click", () => { $("#fixpos").hidden = true; });
+$("#fixpos").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const v = $("#fixIn").value.trim(); if (!v) return;
+  $("#fixpos").hidden = true; $("#fixIn").value = "";
+  if (LIVE) { send({ type: "adresse", texte: v }); setQuip("Je recherche cette adresse et je recentre le globe.", "POSITION"); }
+  else setQuip("Aperçu : sur ton PC, Jarvis enregistrerait cette adresse et recentrerait le globe.", "POSITION");
+});
 $("#close").addEventListener("click", () => { if (LIVE) send({ type: "fermer" }); else setQuip("Aperçu : sur ton PC, ce bouton ferme le plan de travail.", "INFO"); });
 
 /* ================= démarrage ================= */
@@ -999,5 +1025,3 @@ async function whenVisible() {                         // attend que la fenêtre
   setInterval(async () => { await poll(); render(); }, 250);
 })();
 </script>
-
-</html>

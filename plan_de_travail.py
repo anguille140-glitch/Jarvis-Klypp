@@ -325,14 +325,17 @@ def locate() -> dict:
     try:
         if addr:
             lieu = _geocode_address(addr)
+            lieu["source"] = "adresse"
         elif city:
             r = _get_json("https://geocoding-api.open-meteo.com/v1/search?" +
                           urllib.parse.urlencode({"name": city, "count": 1, "language": "fr"}))["results"][0]
-            lieu = {"ville": r["name"], "pays": r.get("country", ""), "lat": r["latitude"], "lon": r["longitude"]}
+            lieu = {"ville": r["name"], "pays": r.get("country", ""), "lat": r["latitude"], "lon": r["longitude"],
+                    "source": "ville"}
         else:
             r = _get_json("http://ip-api.com/json/?lang=fr&fields=status,city,country,lat,lon")
             if r.get("status") == "success":
-                lieu = {"ville": r["city"], "pays": r["country"], "lat": r["lat"], "lon": r["lon"]}
+                lieu = {"ville": r["city"], "pays": r["country"], "lat": r["lat"], "lon": r["lon"],
+                        "source": "internet"}                   # approximatif (ville du fournisseur d'accès)
     except Exception as e:  # noqa: BLE001
         log.warning("Position introuvable (%s) : règle JARVIS_VILLE dans .env.", e)
     if lieu:
@@ -342,7 +345,7 @@ def locate() -> dict:
             f.write_text(json.dumps(lieu, ensure_ascii=False), encoding="utf-8")
         except OSError:
             pass
-    return lieu or {"ville": "", "pays": "", "lat": 46.5, "lon": 2.5}
+    return lieu or {"ville": "", "pays": "", "lat": 46.5, "lon": 2.5, "source": "defaut"}
 
 
 JOURS = ["Lun.", "Mar.", "Mer.", "Jeu.", "Ven.", "Sam.", "Dim."]
@@ -619,6 +622,14 @@ class Workspace:
         if t == "journal":                                 # ce que fait la page (diagnostic dans jarvis.log)
             log.info("Plan de travail (page) : %s", str(a.get("texte", ""))[:200])
             return "ok"
+        if t == "adresse" and a.get("texte"):          # corrigée depuis le plan de travail
+            out = set_address(str(a["texte"])[:200])
+            if out.startswith("OK"):
+                self.boot_seq += 1                         # le globe rezoome sur la bonne position
+                note("jarvis", "Position corrigée. Je recentre le globe.")
+            else:
+                note("jarvis", "Je n'ai pas trouvé cette adresse. Essaie avec le code postal et la ville.")
+            return out
         if t == "fermer":
             threading.Thread(target=self.close, daemon=True).start()
             return "ok"

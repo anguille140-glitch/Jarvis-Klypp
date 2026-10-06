@@ -5,7 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import plan_de_travail  # noqa: E402
 
-print("Ton adresse (ex. : 12 rue des Lilas, 74300 Cluses) ou juste ta ville.")
+print("Ton adresse (ex. : 12 rue des Lilas, 69002 Lyon) ou juste ta ville.")
 print("Elle est enregistrée seulement sur ton PC, dans le fichier .env.\n")
 adresse = input("Adresse : ").strip()
 print("\nRecherche...")
