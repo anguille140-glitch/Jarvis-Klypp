@@ -9,7 +9,8 @@ Tout est local : un petit serveur sur ton PC (adresse secrète), aucune donnée 
 (sauf la météo : open-meteo.com, et ta position approximative si tu ne l'as pas réglée : ip-api.com).
 
 Réglages (.env) :
-  JARVIS_VILLE=Thuir                (sinon : position approximative d'après ta connexion)
+  JARVIS_ADRESSE=...                ton adresse (zoom final jusqu'à ta rue ; reste sur ton PC, jamais affichée)
+  JARVIS_VILLE=...                  ou juste ta ville (sinon : position approximative d'après ta connexion)
   JARVIS_PLAN_APPS=Rocket League,Discord,Steam,Chrome,Spotify,YouTube,FACEIT,Netflix
   JARVIS_PLAN_ECRAN=principal | gauche
 """
@@ -242,18 +243,41 @@ def _get_json(url: str, timeout: float = 10) -> dict:
         return json.loads(r.read().decode("utf-8"))
 
 
+def _geocode_address(addr: str) -> dict:
+    """Adresse précise -> coordonnées. France : base officielle (api-adresse.data.gouv.fr), sinon OpenStreetMap."""
+    try:
+        r = _get_json("https://api-adresse.data.gouv.fr/search/?" + urllib.parse.urlencode({"q": addr, "limit": 1}))
+        f = r["features"][0]
+        if f["properties"].get("score", 0) >= 0.5:
+            lon, lat = f["geometry"]["coordinates"]
+            return {"ville": f["properties"].get("city", ""), "pays": "France", "lat": lat, "lon": lon}
+    except Exception:  # noqa: BLE001
+        pass
+    r = _get_json("https://nominatim.openstreetmap.org/search?" +
+                  urllib.parse.urlencode({"q": addr, "format": "json", "limit": 1, "addressdetails": 1}))[0]
+    a = r.get("address", {})
+    return {"ville": a.get("city") or a.get("town") or a.get("village") or "", "pays": a.get("country", ""),
+            "lat": float(r["lat"]), "lon": float(r["lon"])}
+
+
 def locate() -> dict:
+    """Ta position : JARVIS_ADRESSE (précise, reste sur ton PC) > JARVIS_VILLE > approximation par internet."""
     f = CACHE / "lieu.json"
+    addr = (os.environ.get("JARVIS_ADRESSE") or "").strip()
     city = (os.environ.get("JARVIS_VILLE") or "").strip()
+    key = addr or city
     try:
         cached = json.loads(f.read_text(encoding="utf-8"))
-        if time.time() - cached.get("t", 0) < 86400 and cached.get("demande", "") == city:
+        if (time.time() - cached.get("t", 0) < (30 * 86400 if addr else 86400)
+                and cached.get("demande", "") == key):
             return cached
     except (OSError, ValueError):
         pass
     lieu = {}
     try:
-        if city:
+        if addr:
+            lieu = _geocode_address(addr)
+        elif city:
             r = _get_json("https://geocoding-api.open-meteo.com/v1/search?" +
                           urllib.parse.urlencode({"name": city, "count": 1, "language": "fr"}))["results"][0]
             lieu = {"ville": r["name"], "pays": r.get("country", ""), "lat": r["latitude"], "lon": r["longitude"]}
@@ -264,7 +288,7 @@ def locate() -> dict:
     except Exception as e:  # noqa: BLE001
         log.warning("Position introuvable (%s) : règle JARVIS_VILLE dans .env.", e)
     if lieu:
-        lieu.update(t=time.time(), demande=city)
+        lieu.update(t=time.time(), demande=key)
         try:
             f.parent.mkdir(parents=True, exist_ok=True)
             f.write_text(json.dumps(lieu, ensure_ascii=False), encoding="utf-8")
@@ -517,6 +541,29 @@ class Workspace:
             self.icons[name] = data
         return data
 
+    def tile(self, path: str) -> bytes | None:
+        """Morceau de carte OpenStreetMap (zoom final du globe) : téléchargé une fois, puis gardé sur le PC."""
+        parts = path[len("tuile/"):].removesuffix(".png").split("/")
+        try:
+            z, x, y = (int(v) for v in parts)
+        except ValueError:
+            return None
+        if not (0 <= z <= 18 and 0 <= x < 2 ** z and 0 <= y < 2 ** z):
+            return None
+        f = CACHE / "tuiles" / str(z) / str(x) / f"{y}.png"
+        if f.is_file():
+            return f.read_bytes()
+        try:
+            req = urllib.request.Request(f"https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                                         headers={"User-Agent": "Jarvis-Klypp/1.0 (assistant personnel, usage privé)"})
+            with urllib.request.urlopen(req, timeout=10) as r:
+                data = r.read()
+        except Exception:  # noqa: BLE001
+            return None
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_bytes(data)
+        return data
+
     # --- actions venant de la page
     def action(self, a: dict) -> str:
         t = a.get("type")
@@ -569,6 +616,9 @@ class Workspace:
                 if p == "etat":
                     return self._send(200, json.dumps(ws.snapshot(), ensure_ascii=False).encode("utf-8"),
                                       "application/json")
+                if p.startswith("tuile/"):
+                    data = ws.tile(p)
+                    return self._send(200, data, "image/png") if data else self._send(404, b"", "text/plain")
                 if p == "icone":
                     name = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("nom", [""])[0]
                     data = ws.icon(name)
@@ -619,6 +669,8 @@ class Workspace:
                 "--disable-extensions", "--disable-sync", "--disable-features=Translate,MediaRouter",
                 "--hide-crash-restore-bubble", f"--window-position={l},{t}", f"--window-size={r - l},{b - t}",
                 "--start-fullscreen", f"--app={url}"]
+        if not self.state.get("lieu"):
+            self.state["lieu"] = locate()                   # position prête avant le globe
         self.open_flag.set()
         threading.Thread(target=self._collect, daemon=True).start()
         try:
