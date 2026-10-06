@@ -422,6 +422,7 @@ class Workspace:
         self.icons: dict[str, bytes | None] = {}
         self.icon_lock = threading.Lock()
         self.app_paths: dict[str, str] = {}
+        self.boot_seq = 0                                  # +1 = la page rejoue l'animation du globe
 
     # --- branchement
     def attach(self, presence, actions, brain, ask, say) -> None:
@@ -511,7 +512,7 @@ class Workspace:
               else f"{(model or 'gemini').replace('gemini-', 'GEMINI ').replace('-latest', '').upper()}"
                    f"{' · HYBRIDE' if hybrid else ''}")
         user = getattr(self.brain, "user", "") or "Monsieur"
-        return {**self.state, "mode": mode, "level": round(float(level), 3), "status": status, "sub": sub,
+        return {**self.state, "boot": self.boot_seq, "mode": mode, "level": round(float(level), 3), "status": status, "sub": sub,
                 "log": list(LOG)[-30:], "agenda": self.agenda.upcoming(), "user": user, "ia": ia,
                 "latence": round(getattr(llm, "last_time", 0.0) or 0.0, 1), "micro": "ACTIF", "prudent": True}
 
@@ -567,6 +568,9 @@ class Workspace:
     # --- actions venant de la page
     def action(self, a: dict) -> str:
         t = a.get("type")
+        if t == "journal":                                 # ce que fait la page (diagnostic dans jarvis.log)
+            log.info("Plan de travail (page) : %s", str(a.get("texte", ""))[:200])
+            return "ok"
         if t == "fermer":
             threading.Thread(target=self.close, daemon=True).start()
             return "ok"
@@ -648,8 +652,9 @@ class Workspace:
         if not PAGE.is_file():
             return "ÉCHEC : plan_de_travail.html introuvable"
         if self.proc is not None and self.proc.poll() is None:
-            self._focus()
-            return "OK : le plan de travail est déjà ouvert"
+            self.boot_seq += 1                             # déjà ouvert : on le ramène devant et on rejoue le globe
+            threading.Thread(target=self._bring_front, args=(5,), daemon=True).start()
+            return "OK : plan de travail ramené devant (animation rejouée)"
         import intro_web
         br = intro_web.find_browser()
         if br is None:
@@ -682,6 +687,7 @@ class Workspace:
         if self.presence is not None:
             self.presence.hidden = True                   # la sphère du bureau laisse la place à celle du plan
         threading.Thread(target=self._watch, daemon=True).start()
+        threading.Thread(target=self._bring_front, args=(20,), daemon=True).start()
         log.info("Plan de travail ouvert.")
         return "OK : plan de travail ouvert (globe de chargement puis interface)"
 
@@ -697,6 +703,25 @@ class Workspace:
         self.proc = None
         if self.presence is not None:
             self.presence.hidden = False
+
+    def _bring_front(self, wait: float) -> None:
+        """Attend la fenêtre puis la met DEVANT (sinon Windows peut l'ouvrir derrière, et Chrome met
+        l'animation en pause tant qu'elle est cachée)."""
+        import assistant
+        end = time.monotonic() + wait
+        while time.monotonic() < end:
+            w = next((x for x in assistant.list_windows() if x["titre"].startswith("Plan de travail JARVIS")), None)
+            if w:
+                u32 = ctypes.windll.user32
+                u32.ShowWindow(w["hwnd"], 9)                                   # si réduite : on la restaure
+                u32.SetWindowPos(w["hwnd"], wintypes.HWND(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040)   # devant tout
+                assistant.focus(w["hwnd"])
+                time.sleep(0.4)
+                u32.SetWindowPos(w["hwnd"], wintypes.HWND(-2), 0, 0, 0, 0, 0x0001 | 0x0002)          # puis normale
+                log.info("Plan de travail affiché au premier plan.")
+                return
+            time.sleep(0.3)
+        log.warning("Fenêtre du plan de travail introuvable (Chrome/Edge a-t-il démarré ?).")
 
     def _focus(self) -> None:
         try:

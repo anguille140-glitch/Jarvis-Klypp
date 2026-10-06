@@ -392,13 +392,18 @@ const S = {
   sys: { cpu: 18, ram: 41, gpu: 34, vram: 52, temp: 54, disk: 61, down: 12.4, up: 3.2, gpu_nom: "RTX 4070" }
 };
 const netHist = Array.from({ length: 70 }, (_, i) => ({ d: 8 + 6 * Math.sin(i / 5) + Math.random() * 4, u: 2 + Math.random() * 2 }));
-let failN = 0, nextTry = 0;
+let failN = 0, nextTry = 0, bootSeq = null;
+let perfN = 0, perfT = 0, lite = false;
+function report(texte) { if (LIVE) fetch("action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "journal", texte }) }).catch(() => {}); }
 async function poll() {
   if (!LIVE && failN > 0 && Date.now() < nextTry) { demoTick(); return; }
   try {
     const r = await fetch("etat", { cache: "no-store" });
     if (!r.ok) throw 0;
-    Object.assign(S, await r.json());
+    const j = await r.json();
+    if (bootSeq === null) bootSeq = j.boot ?? 0;
+    else if ((j.boot ?? 0) !== bootSeq) { bootSeq = j.boot; replayBoot(); }
+    Object.assign(S, j);
     if (!LIVE) { LIVE = true; setLink(); netHist.length = 0; for (let i = 0; i < 70; i++) netHist.push({ d: 0, u: 0 }); }
     failN = 0;
   } catch (e) {
@@ -642,8 +647,18 @@ function setTarget() {
   $("#lockCoord").textContent = `CIBLE VERROUILLÉE · ${Math.abs(target.lat).toFixed(4)}°${target.lat >= 0 ? "N" : "S"}  ${Math.abs(target.lon).toFixed(4)}°${target.lon >= 0 ? "E" : "O"}`;
   prefetch();
 }
+function replayBoot() {                                // « ouvre le plan de travail » alors qu'il est déjà ouvert : on rejoue le globe
+  if (!bootDone) return;
+  bootDone = false; bootStart = 0;
+  boot.hidden = false; boot.classList.remove("out"); $("#lock").style.opacity = 0;
+  sizeCanvas(gc); sizeCanvas(mc); setTarget();
+  report("animation du globe rejouée");
+  requestAnimationFrame(drawBoot);
+}
 function finishBoot() {
   if (bootDone) return; bootDone = true;
+  report(`animation du globe terminée (${((performance.now() - bootStart) / 1000).toFixed(1)} s)`);
+  perfT = 0;                                           // la mesure de fluidité repart de zéro après le globe
   boot.classList.add("out"); $("#deck").hidden = false;
   setTimeout(() => { boot.hidden = true; }, 1200);
   sizeOrb(); sizeCanvas(bg, 1.5); greet();
@@ -716,14 +731,14 @@ function sizeOrb() {
 }
 function spun(img, a) { o.save(); o.translate(oc.width / 2, oc.width / 2); o.rotate(a); o.drawImage(img, -oc.width / 2, -oc.width / 2); o.restore(); }
 function stateCol(mode) { return mode === "listening" ? [62, 240, 168] : mode === "thinking" ? [255, 182, 72] : [79, 216, 255]; }
-let perfN = 0, perfT = 0, lite = false;
+
 function watchPerf(now) {                              // trop lent ? on allège automatiquement
   if (lite) return;
   if (!perfT) { perfT = now; perfN = 0; return; }
   perfN++;
   if (now - perfT > 3000) {
     const fps = perfN * 1000 / (now - perfT);
-    if (fps < 30) { lite = true; document.documentElement.classList.add("lite"); BG_MS = 66; motes.length = 60; console.info("Plan de travail : mode allégé (" + fps.toFixed(0) + " i/s)"); }
+    if (fps < 30) { lite = true; report(`mode allégé (${fps.toFixed(0)} images/s)`); document.documentElement.classList.add("lite"); BG_MS = 66; motes.length = 60; console.info("Plan de travail : mode allégé (" + fps.toFixed(0) + " i/s)"); }
     perfT = now; perfN = 0;
   }
 }
@@ -973,7 +988,9 @@ async function whenVisible() {                         // attend que la fenêtre
   sizeCanvas(gc); sizeCanvas(mc);
   await Promise.race([poll(), new Promise((r) => setTimeout(r, 1200))]);
   setLink(); setTarget(); render();
+  report(`page chargée (fenêtre ${document.visibilityState === "visible" ? "visible" : "cachée"})`);
   await whenVisible();
+  report("animation du globe lancée");
   if (REDUCED) { bootStart = performance.now() - T_END * 1000; }
   requestAnimationFrame(drawBoot);
   requestAnimationFrame(drawOrb);
