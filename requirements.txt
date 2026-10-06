@@ -4,3 +4,4 @@ python-dotenv
 elevenlabs
 pillow
 vosk
+psutil

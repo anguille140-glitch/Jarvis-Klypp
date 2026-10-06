@@ -147,6 +147,7 @@ class Presence:
         self.fake_speech = False
         self.pinned = False                  # démo : toujours visible
         self.pinned_until = 0.0              # visible un instant après un changement de réglage
+        self.hidden = False                  # plan de travail ouvert : il a sa propre sphère
         self.last_active = 0.0               # dernier moment où Jarvis écoutait / parlait
         self.lock = threading.Lock()
         self.style = _load_style()           # taille, taille quand il parle, fond noir (réglables à la voix)
@@ -759,7 +760,7 @@ class Orb:
                 mode, target = p.level(start)
                 with p.lock:
                     want = (p.pinned or mode != "idle" or (start - p.last_active) < LINGER_S
-                            or start < p.pinned_until)
+                            or start < p.pinned_until) and not p.hidden
                     status, sub = p.status, p.subtitle
                     nb = p.style.get("fond_noir")
                 if nb is not None:

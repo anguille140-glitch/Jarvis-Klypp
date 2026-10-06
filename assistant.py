@@ -147,6 +147,11 @@ class Voice:
         if not text or self.stale():
             return
         log.info("Jarvis : %s", text)
+        try:
+            import plan_de_travail
+            plan_de_travail.note("jarvis", text)
+        except Exception:  # noqa: BLE001
+            pass
         music = None
         try:
             import local_music
@@ -526,19 +531,20 @@ def list_windows() -> list[dict]:
         title = buf.value
         pid = wintypes.DWORD()
         user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-        exe = ""
+        exe, full = "", ""
         h = kernel32.OpenProcess(0x1000, False, pid.value)
         if h:
             try:
                 b = ctypes.create_unicode_buffer(4096)
                 size = wintypes.DWORD(len(b))
                 if kernel32.QueryFullProcessImageNameW(h, 0, b, ctypes.byref(size)):
+                    full = b.value
                     exe = os.path.basename(b.value)
             finally:
                 kernel32.CloseHandle(h)
         if title == "Program Manager" or exe.lower() in ("textinputhost.exe", "shellexperiencehost.exe"):
             return True
-        out.append({"hwnd": int(hwnd), "titre": title, "exe": exe, "pid": int(pid.value)})
+        out.append({"hwnd": int(hwnd), "titre": title, "exe": exe, "pid": int(pid.value), "chemin": full})
         return True
 
     user32.EnumWindows(enum, 0)
@@ -869,6 +875,14 @@ TOOLS = [{"functionDeclarations": [
         {"action": _p("action", enum=["maintenant", "bilan", "annuler"]),
          "heures": _p("pour annuler : ce qui a été appris ces X dernières heures (défaut 24)", "INTEGER")},
         ["action"]),
+    _fn("plan_de_travail", "Le PLAN DE TRAVAIL : interface plein écran de Jarvis (globe, sphère, conversation, applis, "
+        "météo, agenda, état du PC). « ouvre / affiche le plan de travail », « ferme le plan de travail ».",
+        {"action": _p("action", enum=["ouvrir", "fermer"])}, ["action"]),
+    _fn("agenda", "Agenda de l'utilisateur (affiché sur le plan de travail, avec rappel vocal 10 min avant). "
+        "ajouter : quand (date et heure AAAA-MM-JJTHH:MM, calculée d'après la date du jour) + quoi. "
+        "supprimer : quoi (ou la date). lister.",
+        {"action": _p("action", enum=["ajouter", "supprimer", "lister"]),
+         "quand": _p("AAAA-MM-JJTHH:MM"), "quoi": _p("le rendez-vous / la tâche")}, ["action"]),
     _fn("sphere", "Ton apparence : la SPHÈRE (orbe) de Jarvis. taille = taille normale ; taille_parole = taille "
         "quand tu parles (« réduis ton orbe quand tu me parles ») ; fond_noir = opacité du fond noir (0 = aucun) ; "
         "reinitialiser = réglages d'origine ; etat = réglages actuels. valeur : tres_petite, petite, moyenne, "
@@ -1286,6 +1300,21 @@ class Actions:
             return self.auto.undo_learned(float(heures or 24), self.memory, self.skills)
         return "Ce que j'ai appris récemment :\n" + self.auto.learned_text()
 
+    # --- plan de travail + agenda
+    def do_plan_de_travail(self, action: str = "ouvrir") -> str:
+        import plan_de_travail
+        ws = plan_de_travail.workspace()
+        return ws.open() if action == "ouvrir" else ws.close()
+
+    def do_agenda(self, action: str, quand: str = "", quoi: str = "") -> str:
+        import plan_de_travail
+        ag = plan_de_travail.workspace().agenda
+        if action == "ajouter":
+            return ag.add(quand, quoi)
+        if action == "supprimer":
+            return ag.remove(quoi or quand)
+        return ag.text()
+
     # --- apparence de la sphère
     def do_sphere(self, action: str, valeur: str = "") -> str:
         ui = getattr(self.voice, "ui", None)
@@ -1406,6 +1435,7 @@ CE QUE TU AS APPRIS RÉCEMMENT (auto-amélioration) :
 {learned}
 
 CONTEXTE : nous sommes le {now}. Écrans : {screens}.
+Agenda : {agenda}
 Fenêtres ouvertes : {windows}
 Applications installées : {apps}
 Musiques sur le PC : {tracks}"""
@@ -1459,11 +1489,14 @@ MUSIC_CMDS = [
     ("suivante", re.compile(r"^(?:musique |chanson )?suivante$|^(?:passe|mets?|zappe)(?: a)? (?:la )?"
                             r"(?:musique |chanson )?suivante$|^(?:change|zappe|passe)(?: de)? " + _MUS + r"$")),
 ]
+PLAN_RE = re.compile(r"^(?:tu peux |peux tu )?(ouvre|ouvrir|lance|lancer|affiche|afficher|montre|montrer|active|"
+                     r"activer|deploie|ferme|fermer|quitte|quitter|cache|cacher|enleve|eteins)(?: moi)?"
+                     r"(?: le| mon| ton| la)? (?:plan|poste|espace|bureau|table) de (?:travail|taf)$")
 STOP_ALL_RE = re.compile(r"\b(stop total|stop tout|stoppe tout|arret d urgence|arrete tout|arrete toi tout de suite|"
                          r"urgence stop|coupe tout)\b")
 QUICK_MIN_SCORE = 0.88      # sûr à 88 % du nom de l'appli : sinon on laisse Gemini comprendre
 # Actions qui n'ont pas besoin que Gemini « relise » le résultat avant de répondre
-NO_READBACK = {"sphere", "ouvrir_application", "fermer_application", "fenetre", "ouvrir_site", "rechercher",
+NO_READBACK = {"sphere", "plan_de_travail", "ouvrir_application", "fermer_application", "fenetre", "ouvrir_site", "rechercher",
                "jouer_youtube", "ouvrir_dossier", "volume", "media", "taper_texte", "raccourci_clavier",
                "cliquer", "defiler", "rappel", "systeme", "memoriser", "oublier", "camera", "musique"}
 MULTI_STEP = re.compile(r"\b(et|puis|ensuite|apres|avant|quand|si)\b")
@@ -1523,8 +1556,16 @@ class Brain:
             user=self.user, now=f"{jours[now.weekday()]} {now:%d/%m/%Y}, il est {now:%H:%M}", screens=screens,
             presence=PRESENCE_SURE if sure else PRESENCE_DOUTE, windows=windows, apps=apps,
             memory=self.actions.memory.text(), routines=self.actions.routines.text(),
-            learned=self.actions.auto.learned_text(5),
+            learned=self.actions.auto.learned_text(5), agenda=self._agenda(),
             tracks=self._tracks())}]}
+
+    @staticmethod
+    def _agenda() -> str:
+        try:
+            import plan_de_travail
+            return plan_de_travail.workspace().agenda.text()
+        except Exception:  # noqa: BLE001
+            return "inconnu"
 
     @staticmethod
     def _tracks() -> str:
@@ -1549,6 +1590,14 @@ class Brain:
                 pass
             log.info("Voie express : arrêt d'urgence (%d programme(s) coupé(s))", n)
             self.voice.say("Arrêt d'urgence. Tout est arrêté.")
+            return True
+        pm = PLAN_RE.match(text)
+        if pm:
+            ouvrir = pm.group(1) not in ("ferme", "fermer", "quitte", "quitter", "cache", "cacher", "enleve", "eteins")
+            out = self.actions.do_plan_de_travail("ouvrir" if ouvrir else "fermer")
+            log.info("Voie express (plan de travail) : %s -> %s", heard, out)
+            self.voice.say(("Plan de travail en cours de déploiement." if ouvrir else "Plan de travail fermé.")
+                           if out.startswith("OK") else "Je n'arrive pas à ouvrir le plan de travail.")
             return True
         for action, rx in MUSIC_CMDS:
             if rx.match(text):
@@ -1648,7 +1697,9 @@ class Brain:
         Mode hybride : l'IA locale répond ; si elle n'y arrive pas, Gemini reprend la demande (llm=self.strong)."""
         llm = llm or self.gemini
         self.actions.tainted = False                    # rien lu sur internet pour cette demande (pour l'instant)
-        if getattr(llm, "accepts_audio", True):
+        if wav is None:                                 # message ÉCRIT (plan de travail)
+            user_parts = [{"text": f"(Message écrit par {self.user} : « {heard} »)"}]
+        elif getattr(llm, "accepts_audio", True):
             user_parts = [
                 {"inlineData": {"mimeType": "audio/wav", "data": base64.b64encode(wav).decode()}},
                 {"text": f"(Message vocal. Transcription locale approximative, peut être fausse : « {heard} »)"},
@@ -1657,6 +1708,11 @@ class Brain:
             text = self.ears(wav) if self.ears else None
             if text:
                 heard = text
+                try:
+                    import plan_de_travail
+                    plan_de_travail.fix_last_user(text)
+                except Exception:  # noqa: BLE001
+                    pass
             user_parts = [{"text": f"(Message vocal transcrit, peut contenir de petites erreurs : « {heard} »)"}]
         turn = [{"role": "user", "parts": user_parts}]
         history = [c for t in self.turns[-8:] for c in t]
@@ -2249,6 +2305,30 @@ def run(device: int, rate: int, user: str = "Monsieur", clap_factory=None, rms=N
 
     threading.Thread(target=lambda: [voice.prepare(c) for c in CONFIRMS + ["Fin de programme. À bientôt, monsieur."]],
                      daemon=True).start()
+    def ask_text(text: str) -> None:
+        """Message écrit depuis le plan de travail : traité comme une demande vocale."""
+        def go() -> None:
+            voice.bind()
+            try:
+                import plan_de_travail
+                plan_de_travail.note("toi", text)
+            except Exception:  # noqa: BLE001
+                pass
+            status("thinking")
+            try:
+                if not brain.quick(text, words):
+                    brain.handle(None, text, sure=True)
+            except Exception:  # noqa: BLE001
+                log.exception("Erreur sur un message écrit")
+            finally:
+                status("idle")
+        threading.Thread(target=go, daemon=True).start()
+
+    try:
+        import plan_de_travail
+        plan_de_travail.workspace().attach(ui, brain.actions, brain, ask_text, voice.say)
+    except Exception:  # noqa: BLE001
+        log.warning("Plan de travail indisponible", exc_info=True)
     log.info("Assistant prêt : dis « Jarvis » suivi de ta demande.")
     with sd.InputStream(device=device, samplerate=rate, channels=1, dtype="float32",
                         blocksize=ear.block, callback=ear._cb):
@@ -2281,6 +2361,11 @@ def run(device: int, rate: int, user: str = "Monsieur", clap_factory=None, rms=N
             if is_stop(heard):                                # « Jarvis, fin de programme »
                 return _shutdown(voice, status)
             log.info("Demande : %s", heard)
+            try:
+                import plan_de_travail
+                plan_de_travail.note("toi", heard)
+            except Exception:  # noqa: BLE001
+                pass
             if brain.actions.improver is not None:
                 brain.actions.improver.touch()           # tu es là : pas d'auto-amélioration pendant ce temps
             ear.mute.set()

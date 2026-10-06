@@ -6,3 +6,5 @@ onnxruntime>=1.22
 # Whisper sur la carte graphique NVIDIA (sinon il tourne sur le processeur)
 nvidia-cublas-cu12
 nvidia-cudnn-cu12>=9,<10
+# Plan de travail : débit réseau
+psutil
