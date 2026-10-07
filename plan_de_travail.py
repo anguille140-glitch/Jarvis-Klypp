@@ -423,7 +423,9 @@ JOURS = ["Lun.", "Mar.", "Mer.", "Jeu.", "Ven.", "Sam.", "Dim."]
 
 def weather(lat: float, lon: float) -> dict:
     j = _get_json("https://api.open-meteo.com/v1/forecast?" + urllib.parse.urlencode({
-        "latitude": lat, "longitude": lon, "current": "temperature_2m,weather_code,wind_speed_10m",
+        "latitude": lat, "longitude": lon,
+        "current": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,cloud_cover,precipitation,"
+                   "snowfall,is_day",
         "daily": "weather_code,temperature_2m_max,temperature_2m_min", "timezone": "auto", "forecast_days": 4}))
     c, d = j.get("current", {}), j.get("daily", {})
     days = []
@@ -432,7 +434,67 @@ def weather(lat: float, lon: float) -> dict:
         days.append({"j": JOURS[day.weekday()], "min": round(d["temperature_2m_min"][i]),
                      "max": round(d["temperature_2m_max"][i]), "code": d["weather_code"][i]})
     return {"temp": round(c.get("temperature_2m", 0)), "code": c.get("weather_code", 0),
-            "vent": round(c.get("wind_speed_10m", 0)), "jours": days}
+            "vent": round(c.get("wind_speed_10m", 0)), "vent_dir": round(c.get("wind_direction_10m", 0)),
+            "nuages": round(c.get("cloud_cover", 0)), "pluie": c.get("precipitation", 0) or 0,
+            "neige": c.get("snowfall", 0) or 0, "jour": c.get("is_day", 1), "jours": days}
+
+
+# ============================================================================
+# Holo-table : vrai relief, bâtiments, sommets, rivières, remontées mécaniques (OpenStreetMap)
+# ============================================================================
+OVERPASS = "https://overpass-api.de/api/interpreter"
+
+
+def _height_m(tags: dict) -> float:
+    for k in ("height", "building:height"):
+        try:
+            return max(2.5, min(300.0, float(str(tags.get(k, "")).replace("m", "").replace(",", ".").strip())))
+        except ValueError:
+            pass
+    try:
+        return max(3.0, min(300.0, float(tags.get("building:levels", "")) * 3.1 + 1.5))
+    except ValueError:
+        pass
+    b = tags.get("building", "")
+    return {"apartments": 14, "church": 18, "cathedral": 30, "commercial": 11, "industrial": 9, "warehouse": 9,
+            "school": 10, "hotel": 16, "office": 14, "garage": 3, "shed": 3, "hut": 3, "barn": 7,
+            "farm_auxiliary": 6}.get(b, 7.5)
+
+
+def fetch_zone(lat: float, lon: float) -> dict:
+    """Ce qu'il y a autour de toi : bâtiments (1,6 km), rivières (9 km), sommets et remontées (16 km)."""
+    q = (f"[out:json][timeout:60];"
+         f"(way[\"building\"](around:1600,{lat},{lon}););out tags geom;"
+         f"(way[\"waterway\"=\"river\"](around:9000,{lat},{lon}););out tags geom;"
+         f"(way[\"aerialway\"~\"cable_car|gondola|chair_lift|mixed_lift\"](around:16000,{lat},{lon}););out tags geom;"
+         f"(node[\"natural\"~\"peak|volcano\"][\"name\"](around:16000,{lat},{lon}););out;")
+    req = urllib.request.Request(OVERPASS, data=urllib.parse.urlencode({"data": q}).encode(),
+                                 headers={"User-Agent": "Jarvis-Klypp/1.0 (assistant personnel, usage privé)"})
+    with urllib.request.urlopen(req, timeout=90) as r:
+        j = json.loads(r.read().decode("utf-8"))
+    out: dict = {"batiments": [], "rivieres": [], "remontees": [], "sommets": []}
+    rnd = lambda v: round(v, 6)  # noqa: E731
+    for e in j.get("elements", []):
+        t = e.get("tags") or {}
+        if e.get("type") == "node":
+            try:
+                ele = float(str(t.get("ele", "")).replace(",", ".").split()[0])
+            except (ValueError, IndexError):
+                ele = None
+            out["sommets"].append([t.get("name", ""), ele, rnd(e["lat"]), rnd(e["lon"])])
+            continue
+        g = [[rnd(p["lat"]), rnd(p["lon"])] for p in e.get("geometry") or []]
+        if len(g) < 2:
+            continue
+        if "building" in t and len(g) >= 4:
+            out["batiments"].append([round(_height_m(t), 1), g])
+        elif t.get("waterway") == "river":
+            out["rivieres"].append([t.get("name", ""), g])
+        elif "aerialway" in t:
+            out["remontees"].append([t.get("name", "") or t.get("aerialway", ""), t.get("aerialway", ""), g])
+    out["batiments"] = out["batiments"][:4000]
+    return out
+
 
 
 # ============================================================================
@@ -544,6 +606,8 @@ class Workspace:
         self.icon_lock = threading.Lock()
         self.app_paths: dict[str, str] = {}
         self.boot_seq = 0                                  # +1 = la page rejoue l'animation du globe
+        self.holo_seq = 0                                  # +1 = nouvelle commande pour la holo-table
+        self._zone_lock = threading.Lock()
 
     # --- branchement
     def attach(self, presence, actions, brain, ask, say) -> None:
@@ -635,7 +699,8 @@ class Workspace:
         user = getattr(self.brain, "user", "") or "Monsieur"
         return {**self.state, "boot": self.boot_seq, "mode": mode, "level": round(float(level), 3), "status": status, "sub": sub,
                 "log": list(LOG)[-30:], "agenda": self.agenda.upcoming(), "user": user, "ia": ia,
-                "latence": round(getattr(llm, "last_time", 0.0) or 0.0, 1), "micro": "ACTIF", "prudent": True}
+                "latence": round(getattr(llm, "last_time", 0.0) or 0.0, 1), "micro": "ACTIF", "prudent": True,
+                "sphere": {k: v for k, v in (getattr(p, "style", None) or {}).items() if k in ("taille", "taille_parole")}}
 
     def icon(self, name: str) -> bytes | None:
         with self.icon_lock:
@@ -685,6 +750,70 @@ class Workspace:
         f.parent.mkdir(parents=True, exist_ok=True)
         f.write_bytes(data)
         return data
+
+    def relief(self, path: str) -> bytes | None:
+        """Altitudes du monde entier (tuiles « Terrarium », gratuites) : téléchargées une fois, puis gardées."""
+        parts = path[len("relief/"):].removesuffix(".png").split("/")
+        try:
+            z, x, y = (int(v) for v in parts)
+        except ValueError:
+            return None
+        if not (0 <= z <= 15 and 0 <= x < 2 ** z and 0 <= y < 2 ** z):
+            return None
+        f = CACHE / "relief" / str(z) / str(x) / f"{y}.png"
+        if f.is_file():
+            return f.read_bytes()
+        try:
+            req = urllib.request.Request(f"https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
+                                         headers={"User-Agent": UA})
+            with urllib.request.urlopen(req, timeout=12) as r:
+                data = r.read()
+        except Exception:  # noqa: BLE001
+            return None
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_bytes(data)
+        return data
+
+    def zone(self) -> dict:
+        """Bâtiments, sommets, rivières et remontées autour de ta position (gardés sur le PC)."""
+        lieu = self.state.get("lieu") or {}
+        try:
+            lat, lon = float(lieu["lat"]), float(lieu["lon"])
+        except (KeyError, TypeError, ValueError):
+            return {"etat": "position inconnue"}
+        f = CACHE / f"zone_{lat:.3f}_{lon:.3f}.json"
+        if f.is_file():
+            try:
+                return {"etat": "ok", **json.loads(f.read_text(encoding="utf-8"))}
+            except (OSError, ValueError):
+                pass
+        if self._zone_lock.locked():
+            return {"etat": "en cours"}
+
+        def fetch() -> None:
+            with self._zone_lock:
+                try:
+                    data = fetch_zone(lat, lon)
+                    f.parent.mkdir(parents=True, exist_ok=True)
+                    f.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+                    log.info("Holo-table : %d bâtiments, %d sommets, %d rivières, %d remontées autour de toi.",
+                             len(data["batiments"]), len(data["sommets"]), len(data["rivieres"]), len(data["remontees"]))
+                except Exception as e:  # noqa: BLE001
+                    log.info("Holo-table : données OpenStreetMap indisponibles (%s)", e)
+                    time.sleep(60)                         # on réessaiera plus tard
+
+        threading.Thread(target=fetch, daemon=True).start()
+        return {"etat": "en cours"}
+
+    def holo(self, cmd: str, arg: str = "") -> str:
+        """Commande vocale pour la holo-table (ouvre le plan de travail si besoin)."""
+        self.holo_seq += 1
+        self.state["holo"] = {"seq": self.holo_seq, "cmd": cmd, "arg": arg}
+        if self.proc is None or self.proc.poll() is not None:
+            out = self.open()
+            if out.startswith("ÉCHEC"):
+                return out
+        return "OK"
 
     # --- actions venant de la page
     def action(self, a: dict) -> str:
@@ -752,6 +881,18 @@ class Workspace:
                 if p.startswith("tuile/"):
                     data = ws.tile(p)
                     return self._send(200, data, "image/png") if data else self._send(404, b"", "text/plain")
+                if p.startswith("relief/"):
+                    data = ws.relief(p)
+                    return self._send(200, data, "image/png") if data else self._send(404, b"", "text/plain")
+                if p == "zone":
+                    return self._send(200, json.dumps(ws.zone(), ensure_ascii=False).encode("utf-8"),
+                                      "application/json")
+                if p.startswith("web/"):
+                    f = (BASE / p).resolve()
+                    web = (BASE / "web").resolve()
+                    if web in f.parents and f.is_file() and f.suffix in (".js", ".json"):
+                        return self._send(200, f.read_bytes(), "text/javascript; charset=utf-8")
+                    return self._send(404, b"", "text/plain")
                 if p == "icone":
                     name = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("nom", [""])[0]
                     data = ws.icon(name)
@@ -805,6 +946,7 @@ class Workspace:
                 "--start-fullscreen", "--autoplay-policy=no-user-gesture-required", f"--app={url}"]
         self.state["lieu"] = locate()                       # position à jour avant le globe (cache disque)
         self.state["sons"] = sound_volume()                 # bruitages de l'animation (JARVIS_PLAN_SONS)
+        self.zone()                                         # bâtiments / sommets pour la holo-table (en fond)
         self.open_flag.set()
         threading.Thread(target=self._collect, daemon=True).start()
         try:

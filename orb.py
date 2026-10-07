@@ -480,6 +480,7 @@ def create(presence: Presence | None = None) -> "Orb":
 
 class Orb:
     """La fenêtre de la sphère (transparente, au-dessus de tout, traversée par la souris)."""
+    MAX_DEFAULT = 0.60                                   # taille max prévue (la sphère par la carte graphique : 0.70)
 
     def __init__(self, presence: Presence | None = None) -> None:
         if os.name != "nt":
@@ -497,7 +498,7 @@ class Orb:
         # fenêtre prévue pour la taille max ; la taille réelle (réglable à la voix) est un zoom dedans
         st = self.presence.style
         self.max_size = max(BASE_SIZE, st.get("taille") or 0, st.get("taille_parole") or 0,
-                            float(os.environ.get("JARVIS_SPHERE_TAILLE_MAX") or 0.60))
+                            float(os.environ.get("JARVIS_SPHERE_TAILLE_MAX") or self.MAX_DEFAULT))
         self.max_size = min(SIZE_MAX, self.max_size)
         D = int(sh * self.max_size)
         scale = sh / 1080

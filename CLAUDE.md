@@ -32,6 +32,13 @@ et donne les actions à faire (fichiers à lancer) clairement.
 - `orb.py` — sphère animée du bureau (fenêtre transparente, taille réglable à la voix) ; `orb.create()` choisit
   `orb_gpu.py` (OpenGL via ctypes, shader `orb_sphere.glsl`, synchro écran 240 Hz) et revient à l'ancienne sphère
   (numpy) si la carte graphique n'est pas utilisable.
+- `web/holo.js` (+ `web/three/`, three.js r128 local) — HOLO-TABLE 3D dans le plan de travail : vrai relief (tuiles
+  Terrarium via `/relief/`), carte OSM holographique drapée, bâtiments / sommets / rivières / remontées (Overpass via
+  `/zone`, cache `.cache/zone_*.json`), soleil et météo réels, modes holo / thermique / rayons X, scan, survol, drones,
+  satellite, cible + profil. Remplace la carte plate à la fin du globe ; plein écran via le bouton « Holo » ou la voix
+  (outil `holo_table`, canal `state["holo"]`). Test sans internet : données factices + Chromium swiftshader.
+- `session_jeu.py` — « lance-moi une session CS » : FACEIT AC (élévation UAC, ou tâche planifiée sans confirmation) puis
+  CS2 via `steam://rungameid/730`, annonces vocales à chaque étape (outil `session_jeu` + voie express).
 - `mode_jeu.py` — mode jeu automatique (psutil) : décharge Ollama et Whisper GPU (Whisper « small » CPU pendant la
   partie), priorité basse, sphère ralentie, mesures GPU espacées (NVML au lieu de nvidia-smi dans `plan_de_travail.py`).
 - `local_music.py` — lecteur MCI (dossier `musique/`). `camera_mode.py` + `camera.html` — contrôle à la main.
@@ -40,7 +47,7 @@ et donne les actions à faire (fichiers à lancer) clairement.
 ## Réglages utiles (`.env`)
 `JARVIS_IA` (hybride | local | local_seul | gemini), `JARVIS_ADRESSE` / `JARVIS_VILLE`, `JARVIS_INTERRUPTION`,
 `JARVIS_PLAN_APPS`, `JARVIS_MUSIQUE_DECALAGE`, `JARVIS_AUTO_AMELIORATION`, `JARVIS_DOSSIERS_AUTORISES`,
-`JARVIS_BIP` (1 = bip quand il écoute), `JARVIS_PLAN_SONS` (bruitages du globe, 0–100), `JARVIS_SPHERE_MOTEUR` (cpu = ancienne sphère), `JARVIS_MODE_JEU` (non = désactivé), `JARVIS_JEUX` (jeux en plus), `JARVIS_VOSK` (petit par défaut ; grand = modèle plus précis mais lourd, à charger longtemps).
+`JARVIS_BIP` (1 = bip quand il écoute), `JARVIS_PLAN_SONS` (bruitages du globe, 0–100), `JARVIS_SPHERE_MOTEUR` (cpu = ancienne sphère), `JARVIS_MODE_JEU` (non = désactivé), `JARVIS_JEUX` (jeux en plus), `JARVIS_FACEIT_AC` (chemin de faceitclient.exe si besoin), `JARVIS_FACEIT_ATTENTE` (s avant CS2), `JARVIS_VOSK` (petit par défaut ; grand = modèle plus précis mais lourd, à charger longtemps).
 
 ## Où on en est (à vérifier sur le PC de Klypp)
 - **Sphère OpenGL** (`orb_gpu.py`) : jamais testée sur un vrai Windows. Vérifier dans `jarvis.log` la ligne
@@ -48,6 +55,9 @@ et donne les actions à faire (fichiers à lancer) clairement.
   sphère ou erreur : regarder la transparence DWM (`_init_gl`), sinon `JARVIS_SPHERE_MOTEUR=cpu` en secours.
 - **Animation du plan de travail** (globe → carte holographique 3D + bruitages WebAudio) : à valider en vrai,
   notamment le son (Chrome lancé avec `--autoplay-policy=no-user-gesture-required`) et la fluidité de la carte.
+- **Holo-table 3D** : jamais vue avec les vraies données (relief Terrarium + Overpass) ; vérifier la ligne
+  « Holo-table : N bâtiments… » dans `jarvis.log`. **Session CS** : vérifier le nom du programme FACEIT AC.
+- **Sphère** : réglages taille / fond noir désormais aussi en voie express (`parse_orb_style`).
 - **Position** : la puce de position est cliquable pour corriger l'adresse (`JARVIS_ADRESSE` dans `.env`, jamais
   dans le code).
 - **Idée en attente** : brancher Claude Code à Jarvis (« Jarvis, répare-toi ») avec garde-fous : sauvegarde avant

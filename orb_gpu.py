@@ -120,6 +120,7 @@ class _GL:
 
 class GpuOrb(O.Orb):
     """La sphère classique, mais dessinée par la carte graphique dans une fenêtre OpenGL transparente."""
+    MAX_DEFAULT = O.SIZE_MAX                             # toutes les tailles demandées à la voix sont possibles
 
     def __init__(self, presence: O.Presence | None = None) -> None:
         self.gl = None

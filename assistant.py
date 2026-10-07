@@ -886,6 +886,20 @@ TOOLS = [{"functionDeclarations": [
         "supprimer : quoi (ou la date). lister.",
         {"action": _p("action", enum=["ajouter", "supprimer", "lister"]),
          "quand": _p("AAAA-MM-JJTHH:MM"), "quoi": _p("le rendez-vous / la tâche")}, ["action"]),
+    _fn("holo_table", "La HOLO-TABLE 3D façon Tony Stark (dans le plan de travail) : vrai relief autour du domicile, "
+        "bâtiments, sommets, rivières, remontées, météo et soleil réels. ouvrir / fermer ; mode (valeur : holo, "
+        "thermique, rayons_x) ; scan (scan LIDAR) ; survol (vol cinématique au-dessus des sommets) ; cible (valeur : "
+        "nom d'un sommet / lieu, ou « maison ») ; drones ; satellite ; nuages ; meteo ; soleil (valeur : heure, ex. 18, "
+        "ou « maintenant ») ; recentrer. Effet immédiat à l'écran.",
+        {"action": _p("action", enum=["ouvrir", "fermer", "mode", "scan", "survol", "cible", "drones", "satellite",
+                                      "nuages", "meteo", "soleil", "recentrer"]),
+         "valeur": _p("détail (mode, lieu ou heure)")}, ["action"]),
+    _fn("session_jeu", "Lance une SESSION DE JEU complète. cs2 : « lance-moi une session CS », « lance CS2 », "
+        "« on se fait une game » -> FACEIT AC d'abord (anti-triche), attend qu'il tourne, puis Counter-Strike 2 par "
+        "Steam ; tu préviens à chaque étape tout seul. installer_sans_confirmation : FACEIT AC ne demandera plus la "
+        "confirmation Windows à chaque lancement. Utilise TOUJOURS cet outil pour CS / CS2 / FACEIT AC, jamais "
+        "ouvrir_application.",
+        {"action": _p("quoi", enum=["cs2", "installer_sans_confirmation"])}, ["action"]),
     _fn("sphere", "Ton apparence : la SPHÈRE (orbe) de Jarvis. taille = taille normale ; taille_parole = taille "
         "quand tu parles (« réduis ton orbe quand tu me parles ») ; ecran = sur quel écran (principal, secondaire, "
         "gauche, droite, autre) ; position = où sur l'écran (haut gauche, haut milieu, haut droite, centre, bas "
@@ -1325,6 +1339,19 @@ class Actions:
             return ag.remove(quoi or quand)
         return ag.text()
 
+    # --- holo-table 3D
+    def do_holo_table(self, action: str, valeur: str = "") -> str:
+        import plan_de_travail
+        out = plan_de_travail.workspace().holo(action, str(valeur or ""))
+        return out if out.startswith("ÉCHEC") else f"OK : holo-table, {action} {valeur}".strip()
+
+    # --- session de jeu : FACEIT AC puis CS2
+    def do_session_jeu(self, action: str = "cs2") -> str:
+        import session_jeu
+        if action == "installer_sans_confirmation":
+            return session_jeu.install_no_prompt()
+        return session_jeu.start_session_cs(self.voice.say)
+
     # --- apparence de la sphère
     def do_sphere(self, action: str, valeur: str = "") -> str:
         ui = getattr(self.voice, "ui", None)
@@ -1555,6 +1582,67 @@ ORB_SCREEN = re.compile(r"\b(?:(autre|deuxieme|second|seconde|premier|1er|2e) ec
                         r"de droite|gauche|droite|deuxieme|second|deux|2|premier|un|1|du milieu))\b")
 
 
+HOLO_OPEN_RE = re.compile(r"^(?:tu peux |peux tu |vas y )?(ouvre|ouvres|ouvrir|affiche|afficher|montre|montre moi|lance|"
+                          r"active|deploie|ferme|fermer|cache|quitte|enleve)(?: moi)?(?: la| le| ta| ma| l)? ?"
+                          r"(holo ?table|holotable|table holographique|carte (?:holographique|3d|en 3d|holo)|atlas|hologramme|"
+                          r"relief(?: 3d| en 3d)?)\b")
+HOLO_CMD_RE = re.compile(r"^(?:passe en |active |mets |mode |vision )*(?:mode |vision )?(thermique|rayons? x|holo(?:graphique)?)$|"
+                         r"^(scanne?|lance un scan|scan lidar|fais un scan)(?: la zone| le secteur| les environs)?$|"
+                         r"^(survol|fais un survol|lance le survol|survole la zone)$|"
+                         r"^(?:cible|cibler|vise|localise|zoome? sur)(?: le| la| les| l)? (.+)$")
+CS_WORDS = r"(?:cs ?2?|c s ?2?|counter(?: strike)?(?: 2)?|conteur strike|cesse? deux|faceit|face it|fesse it)"
+SESSION_CS_RE = re.compile(r"\b(?:session|partie|game|games|match|ranked)\b.*\b" + CS_WORDS + r"\b|"
+                           r"^(?:tu peux |peux tu |vas y )?(?:lance|lances|lancer|demarre|demarrer|ouvre|ouvrir|mets|met)"
+                           r"(?: moi| nous)?(?: une| un| la| le)?(?: session| partie| game)?(?: de| d)? ?"
+                           r"(?:cs ?2?|c s ?2?|counter strike(?: 2)?|conteur strike)\b|"
+                           r"^(?:on se fait|on fait|on lance) (?:une|un) (?:game|partie|match)$")
+ORB_SELF_SIZE = re.compile(r"\b(fais toi|fait toi|deviens|reduis toi|agrandis toi|rapetisse|retrecis toi|grossis)\b")
+FOND_NOIR = re.compile(r"\b(fond|voile|ecran) (noir|sombre)\b|\bfond d ecran noir\b")
+
+
+def parse_orb_style(text: str) -> list[tuple[str, str]] | None:
+    """Sans IA : « réduis ton orbe », « fais-toi plus grand », « orbe à 30 % », « plus petit quand tu parles »,
+    « enlève le fond noir », « remets le fond noir », « fond noir à 50 % »."""
+    out: list[tuple[str, str]] = []
+    pct = re.search(r"\b(\d{1,3}) ?(?:%|pour ?cent|pourcent)?", text)
+    if FOND_NOIR.search(text):
+        if re.search(r"\b(enleve|enlever|retire|retirer|supprime|coupe|desactive|vire|sans|plus de|arrete|eteins)\b", text):
+            out.append(("fond_noir", "aucun"))
+        elif pct:
+            out.append(("fond_noir", pct.group(1)))
+        elif re.search(r"\b(leger|legere|transparent|clair|moins noir|moins fonce)\b", text):
+            out.append(("fond_noir", "leger"))
+        elif "moyen" in text:
+            out.append(("fond_noir", "moyen"))
+        elif re.search(r"\b(remets|remet|mets|met|active|rajoute|rallume|total|complet|plus noir|plus fonce)\b", text):
+            out.append(("fond_noir", "total"))
+        return out or None
+    if not (ORB_WORDS.search(text) or ORB_SELF_SIZE.search(text)):
+        return None
+    if not re.search(r"\b(taille|grande?|petite?|reduis|reduire|agrandis|agrandir|rapetisse|retrecis|grossis|grosse?|"
+                     r"diminue|augmente|minuscule|geante?|max|maximum|minimum)\b|%|pour ?cent|(?<!ecran )\b\d{2,3}\b", text):
+        return None                                    # pas une question de taille (déplacement, écran...)
+    action = "taille_parole" if re.search(r"\bquand tu (me )?parles?\b|\ben parlant\b|\bpendant que tu parles\b", text) \
+        else "taille"
+    if re.search(r"\b(taille normale|taille de base|taille par defaut|comme avant)\b", text):
+        return [(action, "normale")]
+    if re.search(r"\btres (grande|grand|gros|grosse)\b|\bgeante?\b|\bau maximum\b|\bmax\b", text):
+        return [(action, "tres_grande")]
+    if re.search(r"\btres (petite|petit)\b|\bminuscule\b|\bau minimum\b", text):
+        return [(action, "tres_petite")]
+    if pct and re.search(r"\b(taille|orbe|orb|sphere|arbre|boule|fais toi|deviens)\b", text):
+        return [(action, pct.group(1))]
+    if re.search(r"\b(plus petite?|reduis|reduire|rapetisse|retrecis|moins grande?|moins grosse?|diminue)\b", text):
+        return [(action, "plus_petite")]
+    if re.search(r"\b(plus grande?|agrandis|agrandir|grossis|plus grosse?|augmente)\b", text):
+        return [(action, "plus_grande")]
+    if re.search(r"\b(petite|petit)\b", text):
+        return [(action, "petite")]
+    if re.search(r"\b(grande|grand)\b", text):
+        return [(action, "grande")]
+    return None
+
+
 def parse_orb_move(text: str) -> list[tuple[str, str]] | None:
     """« mets ton orbe en haut à gauche », « va sur mon écran secondaire », « déplace-toi en bas au milieu »."""
     if not (ORB_WORDS.search(text) or SELF_MOVE.match(text)):
@@ -1581,7 +1669,7 @@ STOP_ALL_RE = re.compile(r"\b(stop total|stop tout|stoppe tout|arret d urgence|a
                          r"urgence stop|coupe tout)\b")
 QUICK_MIN_SCORE = 0.88      # sûr à 88 % du nom de l'appli : sinon on laisse Gemini comprendre
 # Actions qui n'ont pas besoin que Gemini « relise » le résultat avant de répondre
-NO_READBACK = {"sphere", "plan_de_travail", "ouvrir_application", "fermer_application", "fenetre", "ouvrir_site", "rechercher",
+NO_READBACK = {"holo_table", "session_jeu", "sphere", "plan_de_travail", "ouvrir_application", "fermer_application", "fenetre", "ouvrir_site", "rechercher",
                "jouer_youtube", "ouvrir_dossier", "volume", "media", "taper_texte", "raccourci_clavier",
                "cliquer", "defiler", "rappel", "systeme", "memoriser", "oublier", "camera", "musique"}
 MULTI_STEP = re.compile(r"\b(et|puis|ensuite|apres|avant|quand|si)\b")
@@ -1664,6 +1752,16 @@ class Brain:
             names = []
         return ", ".join(names) or "aucune"
 
+    @staticmethod
+    def _holo_open() -> bool:
+        """Le plan de travail est ouvert (les commandes « scan », « survol »... visent alors la holo-table)."""
+        try:
+            import plan_de_travail
+            ws = plan_de_travail.workspace()
+            return ws.proc is not None and ws.proc.poll() is None
+        except Exception:  # noqa: BLE001
+            return False
+
     def quick(self, heard: str, words: set[str]) -> bool:
         """Voie express SANS IA : « ouvre Discord », « lance Spotify », « ouvre YouTube »...
         Seulement si la phrase est simple et le nom reconnu avec certitude. Sinon -> Gemini."""
@@ -1678,6 +1776,44 @@ class Brain:
                 pass
             log.info("Voie express : arrêt d'urgence (%d programme(s) coupé(s))", n)
             self.voice.say("Arrêt d'urgence. Tout est arrêté.")
+            return True
+        hm = HOLO_OPEN_RE.match(text)
+        if hm:                                             # « Jarvis, affiche la holo-table »
+            close = hm.group(1) in ("ferme", "fermer", "cache", "quitte", "enleve")
+            out = self.actions.do_holo_table("fermer" if close else "ouvrir")
+            log.info("Voie express (holo-table) : %s -> %s", heard, out)
+            self.voice.say("Holo-table fermée." if close else random.choice(
+                ["Projection holographique en cours.", "Holo-table en ligne, monsieur.", "Je vous projette le secteur."])
+                if out.startswith("OK") else "Je n'arrive pas à ouvrir la holo-table.")
+            return True
+        hc = HOLO_CMD_RE.match(text)
+        if hc and self._holo_open():
+            if hc.group(1):
+                v = hc.group(1)
+                out = self.actions.do_holo_table("mode", "rayons_x" if v.startswith("rayon") else
+                                                 "thermique" if v.startswith("therm") else "holo")
+            elif hc.group(2):
+                out = self.actions.do_holo_table("scan")
+            elif hc.group(3):
+                out = self.actions.do_holo_table("survol")
+            else:
+                out = self.actions.do_holo_table("cible", hc.group(4))
+            log.info("Voie express (holo-table) : %s -> %s", heard, out)
+            self.voice.say(random.choice(["Bien, monsieur.", "C'est parti.", "En cours."]))
+            return True
+        if SESSION_CS_RE.search(text):                    # « lance-moi une session CS » : FACEIT AC puis CS2
+            out = self.actions.do_session_jeu("cs2")
+            log.info("Voie express (session CS) : %s -> %s", heard, out)
+            if out.startswith("DÉJÀ"):
+                self.voice.say("Ta session est déjà en train de se lancer.")
+            return True
+        style_cmd = parse_orb_style(text)
+        if style_cmd:
+            outs = [self.actions.do_sphere(a, v) for a, v in style_cmd]
+            log.info("Voie express (sphère, réglage) : %s -> %s", heard, outs[-1])
+            ok = not any(o.startswith("ÉCHEC") for o in outs)
+            self.voice.say(random.choice(["C'est fait.", "Voilà.", "Réglé.", "Comme ceci ?"]) if ok
+                           else "Je n'ai pas compris le réglage.")
             return True
         orb_cmd = parse_orb_move(text)
         if orb_cmd:
