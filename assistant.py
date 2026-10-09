@@ -878,6 +878,14 @@ TOOLS = [{"functionDeclarations": [
     _fn("plan_de_travail", "Le PLAN DE TRAVAIL : interface plein écran de Jarvis (globe, sphère, conversation, applis, "
         "météo, agenda, état du PC). « ouvre / affiche le plan de travail », « ferme le plan de travail ».",
         {"action": _p("action", enum=["ouvrir", "fermer"])}, ["action"]),
+    _fn("fond_ecran", "La VITRINE CS2 (« mon fond d'écran ») : fond d'écran vivant plein écran où des skins CS2 de "
+        "rêve (couteaux, gants, AWP, AK...) défilent au centre, intro en ouverture de caisse. ouvrir / fermer ; "
+        "suivant / precedent ; montrer (valeur : nom du skin, ex. « Dragon Lore », « Karambit Fade ») ; caisse "
+        "(ouvrir une caisse) ; pause / reprendre ; inspecter ; categorie (valeur : couteaux, gants, snipers, "
+        "fusils, pistolets, favoris, tout) ; favori.",
+        {"action": _p("action", enum=["ouvrir", "fermer", "suivant", "precedent", "montrer", "caisse", "pause",
+                                      "reprendre", "inspecter", "categorie", "favori"]),
+         "valeur": _p("nom du skin ou catégorie selon l'action")}, ["action"]),
     _fn("ma_position", "Enregistre l'adresse ou la ville de l'utilisateur (« j'habite à ... », « mon adresse est ... ») : "
         "sert à la météo et au globe du plan de travail. Reste sur son PC.",
         {"adresse": _p("adresse complète ou ville, telle qu'il l'a dite")}, ["adresse"]),
@@ -1326,6 +1334,22 @@ class Actions:
         ws = plan_de_travail.workspace()
         return ws.open() if action == "ouvrir" else ws.close()
 
+    def do_fond_ecran(self, action: str = "ouvrir", valeur: str = "") -> str:
+        import vitrine_cs
+        vt = vitrine_cs.vitrine()
+        if action == "ouvrir":
+            return vt.open()
+        if action == "fermer":
+            return vt.close()
+        if action == "montrer":
+            s = find_skin(valeur)
+            if s is None:
+                return f"ÉCHEC : je ne trouve pas le skin « {valeur} » dans la vitrine"
+            valeur = s["nom"]
+        if action == "categorie":
+            valeur = skin_category(valeur) or valeur
+        return vt.command(action, valeur)
+
     def do_ma_position(self, adresse: str) -> str:
         import plan_de_travail
         return plan_de_travail.set_address(adresse)
@@ -1665,11 +1689,66 @@ PLAN_RE = re.compile(r"^(?:tu peux |peux tu |est ce que tu peux |vas y )?(ouvre|
                      r"quitter|cache|cacher|enleve|eteins|retire)(?: moi| nous)?(?: le| les| mon| ton| la| l| un)? ?"
                      r"(?:plans?|plants?|plan d|poste|postes|espace|bureau|table|mode) (?:de |d )?(?:travai\w*|taf|boulot)"
                      r"(?: s il te plait| stp| merci| jarvis)?$")
+VITRINE_RE = re.compile(r"^(?:tu peux |peux tu |est ce que tu peux |vas y )?(ouvre|ouvres|ouvrir|lance|lances|lancer|"
+                        r"demarre|demarrer|affiche|afficher|mets|met|active|activer|allume|ferme|fermes|fermer|quitte|"
+                        r"quitter|eteins|coupe|arrete|enleve|retire)(?: moi| nous)?(?: le| la| les| mon| ma| mes| un)? ?"
+                        r"(?:fonds? d ecran|fonds? ecran|vitrine|skins)(?: cs ?2?| cs go| de skins?| anime| vivant| cs)*"
+                        r"(?: s il te plait| stp| merci| jarvis)?$")
+VITRINE_CMDS = [
+    ("caisse", re.compile(r"\b(ouvre|ouvres|ouvrir|lance|fais)(?: moi| nous)? (?:une |la |un )?(?:caisse|case|ouverture)\b")),
+    ("suivant", re.compile(r"^(?:skin |arme |objet )?(?:suivant|suivante|d apres|next|change|le suivant|la suivante)"
+                           r"(?: skin| s il te plait| stp)?$|^(?:passe|passe au|mets le|montre le) (?:skin )?suivant\b")),
+    ("precedent", re.compile(r"^(?:skin |arme |objet )?(?:precedent|precedente|d avant|reviens|le precedent|"
+                             r"la precedente)(?: skin| s il te plait| stp)?$|\b(?:reviens|retourne) (?:au |en )?(?:skin )?(?:precedent|arriere)\b")),
+    ("inspecter", re.compile(r"\b(?:inspecte|inspecter|inspection|inspect)\b")),
+    ("pause", re.compile(r"\b(?:pause|arrete|stop|stoppe|bloque)\b.*\b(?:defil\w*|vitrine|skins?)\b|^(?:arrete|stop) de defiler$")),
+    ("reprendre", re.compile(r"\b(?:reprends|reprend|relance|continue)\b.*\b(?:defil\w*|vitrine|skins?)\b|^(?:reprends|continue) a defiler$")),
+    ("favori", re.compile(r"\b(?:ajoute|mets?|met)(?: le| la| ca| celui la| celle la)? (?:en |aux |dans les )?favoris?\b")),
+]
+SKIN_CATS = {"couteau": "couteau", "couteaux": "couteau", "lames": "couteau", "gants": "gants", "gant": "gants",
+             "sniper": "sniper", "snipers": "sniper", "awp": "sniper", "fusil": "fusil", "fusils": "fusil",
+             "pistolet": "pistolet", "pistolets": "pistolet", "favori": "favoris", "favoris": "favoris", "tout": "tout",
+             "tous": "tout"}
+SKIN_ALIASES = {"papillon": "butterfly", "baionnette": "bayonet", "baionette": "bayonet", "gants": "gloves",
+                "gant": "gloves", "karambite": "karambit", "deagle": "desert eagle", "deigle": "desert eagle",
+                "aka": "ak 47", "ak": "ak 47", "dragonlore": "dragon lore", "hurlement": "howl", "fondu": "fade",
+                "meduse": "medusa", "le prince": "the prince", "lotus": "wild lotus", "serpent": "fire serpent"}
+SKIN_STOP = {"le", "la", "les", "un", "une", "moi", "mon", "ma", "mes", "skin", "du", "de", "des", "montre", "affiche",
+             "fais", "voir", "veux", "je", "jarvis", "s", "il", "te", "plait", "stp", "mets", "met", "the", "l", "d"}
+
+
+def find_skin(query: str) -> dict | None:
+    """Le skin de la vitrine le plus proche de ce qui a été dit (« la dragon lore », « karambit fade »...)."""
+    try:
+        import vitrine_cs
+        items = vitrine_cs.skins()
+    except Exception:  # noqa: BLE001
+        return None
+    q = " " + norm(query) + " "
+    for k, v in SKIN_ALIASES.items():
+        q = q.replace(f" {k} ", f" {v} ")
+    words = [w for w in q.split() if w not in SKIN_STOP and (len(w) > 1 or w.isdigit())]
+    best, score = None, 0
+    for s in items:
+        n = " " + norm(s.get("nom", "")) + " "
+        sc = sum(len(w) for w in words if f" {w} " in n or (len(w) > 3 and w in n))
+        if sc > score or (sc == score and sc and best and len(s.get("nom", "")) < len(best.get("nom", ""))):
+            best, score = s, sc                       # à égalité : le nom le plus court (« Bayonet » avant « M9 Bayonet »)
+    return best if score >= 4 else None
+
+
+def skin_category(text: str) -> str | None:
+    for w in norm(text).split():
+        if w in SKIN_CATS:
+            return SKIN_CATS[w]
+    return None
+
+
 STOP_ALL_RE = re.compile(r"\b(stop total|stop tout|stoppe tout|arret d urgence|arrete tout|arrete toi tout de suite|"
                          r"urgence stop|coupe tout)\b")
 QUICK_MIN_SCORE = 0.88      # sûr à 88 % du nom de l'appli : sinon on laisse Gemini comprendre
 # Actions qui n'ont pas besoin que Gemini « relise » le résultat avant de répondre
-NO_READBACK = {"holo_table", "session_jeu", "sphere", "plan_de_travail", "ouvrir_application", "fermer_application", "fenetre", "ouvrir_site", "rechercher",
+NO_READBACK = {"fond_ecran", "holo_table", "session_jeu", "sphere", "plan_de_travail", "ouvrir_application", "fermer_application", "fenetre", "ouvrir_site", "rechercher",
                "jouer_youtube", "ouvrir_dossier", "volume", "media", "taper_texte", "raccourci_clavier",
                "cliquer", "defiler", "rappel", "systeme", "memoriser", "oublier", "camera", "musique"}
 MULTI_STEP = re.compile(r"\b(et|puis|ensuite|apres|avant|quand|si)\b")
@@ -1753,6 +1832,14 @@ class Brain:
         return ", ".join(names) or "aucune"
 
     @staticmethod
+    def _vitrine_open() -> bool:
+        try:
+            import vitrine_cs
+            return vitrine_cs.vitrine().is_open
+        except Exception:  # noqa: BLE001
+            return False
+
+    @staticmethod
     def _holo_open() -> bool:
         """Le plan de travail est ouvert (les commandes « scan », « survol »... visent alors la holo-table)."""
         try:
@@ -1807,6 +1894,36 @@ class Brain:
             if out.startswith("DÉJÀ"):
                 self.voice.say("Ta session est déjà en train de se lancer.")
             return True
+        vm = VITRINE_RE.match(text)
+        if vm:                                            # « lance mon fond d'écran » : la vitrine CS2
+            ouvrir = vm.group(1) not in ("ferme", "fermes", "fermer", "quitte", "quitter", "eteins", "coupe", "arrete",
+                                         "enleve", "retire")
+            out = self.actions.do_fond_ecran("ouvrir" if ouvrir else "fermer")
+            log.info("Voie express (vitrine CS2) : %s -> %s", heard, out)
+            self.voice.say(random.choice(["Ouverture de l'armurerie.", "Je déverrouille la caisse.", "Armurerie en ligne."])
+                           if ouvrir and out.startswith("OK") else ("Vitrine fermée." if out.startswith("OK")
+                           else "Je n'arrive pas à ouvrir la vitrine : " + out.replace("ÉCHEC :", "").strip() + "."))
+            return True
+        if self._vitrine_open():
+            act = next((a for a, rx in VITRINE_CMDS if rx.search(text)), None)
+            val = ""
+            if act is None:
+                cm = re.match(r"^(?:montre|affiche|mets|fais voir|je veux voir|passe|va)(?: moi| nous)?(?: sur)? (.+)$", text)
+                if cm:
+                    cat_ = skin_category(cm.group(1)) if len(cm.group(1).split()) <= 3 else None
+                    skin = None if cat_ else find_skin(cm.group(1))
+                    if cat_:
+                        act, val = "categorie", cat_
+                    elif skin:
+                        act, val = "montrer", skin["nom"]
+            if act:
+                out = self.actions.do_fond_ecran(act, val)
+                log.info("Voie express (vitrine CS2) : %s -> %s", heard, out)
+                if act == "montrer":
+                    self.voice.say(random.choice(["La voilà.", "Le voici.", "Belle pièce.", "Admire, monsieur."]))
+                elif act == "caisse":
+                    self.voice.say(random.choice(["Ouverture de la caisse.", "Bonne chance, monsieur."]))
+                return True
         style_cmd = parse_orb_style(text)
         if style_cmd:
             outs = [self.actions.do_sphere(a, v) for a, v in style_cmd]

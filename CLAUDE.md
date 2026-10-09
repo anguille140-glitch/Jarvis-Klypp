@@ -37,6 +37,10 @@ et donne les actions à faire (fichiers à lancer) clairement.
   `/zone`, cache `.cache/zone_*.json`), soleil et météo réels, modes holo / thermique / rayons X, scan, survol, drones,
   satellite, cible + profil. Remplace la carte plate à la fin du globe ; plein écran via le bouton « Holo » ou la voix
   (outil `holo_table`, canal `state["holo"]`). Test sans internet : données factices + Chromium swiftshader.
+- `vitrine_cs.py` + `vitrine_cs.html` + `skins_cs.json` — VITRINE CS2 (« lance mon fond d'écran ») : intro ouverture de
+  caisse, skins chers qui défilent (inspection 3D souris, zoom, caisses, favoris, tirs dans le décor, bruitages WebAudio),
+  pilotable à la voix (outil `fond_ecran`, `VITRINE_RE` / `VITRINE_CMDS`, `find_skin`). Images Steam téléchargées une
+  fois dans `.cache/skins` (jamais dans le dépôt). Prix indicatifs SteamAnalyst (sept. 2026) pour 14 skins.
 - `session_jeu.py` — « lance-moi une session CS » : FACEIT AC (élévation UAC, ou tâche planifiée sans confirmation) puis
   CS2 via `steam://rungameid/730`, annonces vocales à chaque étape (outil `session_jeu` + voie express).
 - `mode_jeu.py` — mode jeu automatique (psutil) : décharge Ollama et Whisper GPU (Whisper « small » CPU pendant la
@@ -47,7 +51,7 @@ et donne les actions à faire (fichiers à lancer) clairement.
 ## Réglages utiles (`.env`)
 `JARVIS_IA` (hybride | local | local_seul | gemini), `JARVIS_ADRESSE` / `JARVIS_VILLE`, `JARVIS_INTERRUPTION`,
 `JARVIS_PLAN_APPS`, `JARVIS_MUSIQUE_DECALAGE`, `JARVIS_AUTO_AMELIORATION`, `JARVIS_DOSSIERS_AUTORISES`,
-`JARVIS_BIP` (1 = bip quand il écoute), `JARVIS_PLAN_SONS` (bruitages du globe, 0–100), `JARVIS_SPHERE_MOTEUR` (cpu = ancienne sphère), `JARVIS_MODE_JEU` (non = désactivé), `JARVIS_JEUX` (jeux en plus), `JARVIS_FACEIT_AC` (chemin de faceitclient.exe si besoin), `JARVIS_FACEIT_ATTENTE` (s avant CS2), `JARVIS_VOSK` (petit par défaut ; grand = modèle plus précis mais lourd, à charger longtemps).
+`JARVIS_BIP` (1 = bip quand il écoute), `JARVIS_PLAN_SONS` (bruitages du globe, 0–100), `JARVIS_SPHERE_MOTEUR` (cpu = ancienne sphère), `JARVIS_MODE_JEU` (non = désactivé), `JARVIS_VITRINE_ECRAN` (gauche = 2e écran), `JARVIS_JEUX` (jeux en plus), `JARVIS_FACEIT_AC` (chemin de faceitclient.exe si besoin), `JARVIS_FACEIT_ATTENTE` (s avant CS2), `JARVIS_VOSK` (petit par défaut ; grand = modèle plus précis mais lourd, à charger longtemps).
 
 ## Où on en est (à vérifier sur le PC de Klypp)
 - **Sphère OpenGL** (`orb_gpu.py`) : jamais testée sur un vrai Windows. Vérifier dans `jarvis.log` la ligne
@@ -57,6 +61,7 @@ et donne les actions à faire (fichiers à lancer) clairement.
   notamment le son (Chrome lancé avec `--autoplay-policy=no-user-gesture-required`) et la fluidité de la carte.
 - **Holo-table 3D** : jamais vue avec les vraies données (relief Terrarium + Overpass) ; vérifier la ligne
   « Holo-table : N bâtiments… » dans `jarvis.log`. **Session CS** : vérifier le nom du programme FACEIT AC.
+- **Vitrine CS2** : jamais vue avec les vraies images Steam (testée avec des images factices).
 - **Sphère** : réglages taille / fond noir désormais aussi en voie express (`parse_orb_style`).
 - **Position** : la puce de position est cliquable pour corriger l'adresse (`JARVIS_ADRESSE` dans `.env`, jamais
   dans le code).
