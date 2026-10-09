@@ -20,6 +20,11 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg0); 
 canvas.layer { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 #bg { z-index: 0; }
 #fx { z-index: 6; }
+#gl { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 2; display: none; touch-action: none; }
+body.gl #gl { display: block; }
+body.gl #bg, body.gl #spot, body.gl #floor, body.gl #stage { display: none; }
+body.gl #gl.over { cursor: grab; }
+body.gl #gl.drag { cursor: grabbing; }
 button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
 
 /* ---------- scène ---------- */
@@ -222,6 +227,7 @@ body.inspect #inspTitle { opacity: 1; }
 </style>
 
 <canvas id="bg" class="layer"></canvas>
+<canvas id="gl"></canvas>
 <div id="spot"></div>
 <div id="floor"></div>
 <div id="stage" aria-label="Skin : glisser pour tourner, molette pour zoomer, double-clic pour inspecter"></div>
@@ -346,7 +352,10 @@ const SFX = (() => {
 /* ================= décor animé : fumée, braises, rayons ================= */
 const bg = $("#bg"), g = bg.getContext("2d"), fx = $("#fx"), f = fx.getContext("2d");
 let W = 0, H = 0, DPR = 1;
-function size() { DPR = Math.min(devicePixelRatio || 1, 1.5); for (const c of [bg, fx]) { c.width = innerWidth * DPR; c.height = innerHeight * DPR; } W = bg.width; H = bg.height; }
+let GL = null;                                        // moteur 3D (web/vitrine3d.js) si la carte graphique le permet
+function size() { DPR = Math.min(devicePixelRatio || 1, 1.5); for (const c of [bg, fx]) { c.width = innerWidth * DPR; c.height = innerHeight * DPR; }
+  if (GL) { bg.width = Math.round(innerWidth * .5); bg.height = Math.round(innerHeight * .5); }
+  W = bg.width; H = bg.height; }
 size(); addEventListener("resize", size);
 const SMOKE = (() => { const c = document.createElement("canvas"); c.width = c.height = 256; const x = c.getContext("2d");
   for (let i = 0; i < 30; i++) { const a = Math.random() * TAU, r = Math.random() * 70, X = 128 + Math.cos(a) * r, Y = 128 + Math.sin(a) * r * .7, R = 30 + Math.random() * 55;
@@ -361,6 +370,11 @@ function drawBg(now) {
   const dt = Math.min(.05, (now - last) / 1000); last = now;
   const t = now / 1000;
   g.clearRect(0, 0, W, H);
+  if (GL) {                                           // en 3D ce dessin sert de toile de fond : il doit être opaque
+    const base = g.createRadialGradient(W * .5, H * .42, 0, W * .5, H * .42, Math.max(W, H) * .75);
+    base.addColorStop(0, "#151a21"); base.addColorStop(.6, "#0a0d11"); base.addColorStop(1, "#040506");
+    g.fillStyle = base; g.fillRect(0, 0, W, H);
+  }
   // lumière d'ambiance : chaude à gauche, froide à droite (façon menu de CS2)
   let gr = g.createRadialGradient(W * .12, H * .2, 0, W * .12, H * .2, W * .7);
   gr.addColorStop(0, "rgba(242,150,50,.16)"); gr.addColorStop(1, "rgba(242,150,50,0)"); g.fillStyle = gr; g.fillRect(0, 0, W, H);
@@ -414,7 +428,7 @@ function drawFx(dt, t) {
     f.strokeStyle = `rgba(${p.c.join(",")},${p.life})`; f.lineWidth = p.s; f.beginPath(); f.moveTo(p.x, p.y); f.lineTo(p.x - p.vx * .02, p.y - p.vy * .02); f.stroke();
   }
   // paillettes dorées autour des objets ★
-  if (cur && cur.categorie && (cur.nom.startsWith("★") || cur.rarete === "Contrebande") && !document.body.classList.contains("crate")) {
+  if (!GL && cur && cur.categorie && (cur.nom.startsWith("★") || cur.rarete === "Contrebande") && !document.body.classList.contains("crate")) {
     const r = $("#stage").getBoundingClientRect();
     for (let k = 0; k < 2; k++) if (Math.random() < .5) sparks.push({ x: (r.left + Math.random() * r.width) * DPR, y: (r.top + r.height * (.2 + Math.random() * .6)) * DPR,
       vx: (Math.random() - .5) * 30 * DPR, vy: -40 * DPR, life: .7, c: [255, 214, 120], s: 1.2 * DPR });
@@ -490,14 +504,17 @@ function show(i, dir = 1, opts = {}) {
   const s = VIEW[idx]; cur = s;
   document.documentElement.style.setProperty("--rar", s.couleur);
   rarRGB = hexRGB(s.couleur);
-  if (curEl) { const old = curEl; old.classList.remove("enter", "back"); old.classList.add("leave"); if (dir < 0) old.classList.add("back"); setTimeout(() => old.remove(), 650); }
-  const el = makeItem(s); el.classList.add("enter"); if (dir < 0) el.classList.add("back");
-  stage.appendChild(el); curEl = el;
+  if (GL) GL.show(s, img(s), dir);
+  else {
+    if (curEl) { const old = curEl; old.classList.remove("enter", "back"); old.classList.add("leave"); if (dir < 0) old.classList.add("back"); setTimeout(() => old.remove(), 650); }
+    const el = makeItem(s); el.classList.add("enter"); if (dir < 0) el.classList.add("back");
+    stage.appendChild(el); curEl = el;
+  }
   ui.rotX = ui.rotY = ui.vX = ui.vY = 0; ui.zoom = 1;
   setInfo(s); markCard();
   const fl = $("#flash"); fl.classList.remove("go"); void fl.offsetWidth; fl.classList.add("go");
   if (!opts.silent) { SFX.whoosh(); if (s.categorie === "couteau") setTimeout(SFX.shing, 380); }
-  if (s.nom.startsWith("★") || s.rarete === "Contrebande") setTimeout(() => { const r = stage.getBoundingClientRect(); burst(r.left + r.width / 2, r.top + r.height / 2, s.couleur, 60, 420); }, 420);
+  if (s.nom.startsWith("★") || s.rarete === "Contrebande") setTimeout(() => { const r = GL ? { left: 0, top: 0, width: innerWidth, height: innerHeight * .9 } : stage.getBoundingClientRect(); burst(r.left + r.width / 2, r.top + r.height / 2, s.couleur, 60, 420); }, 420);
   timer0 = performance.now(); dwellLeft = DWELL;
 }
 const next = () => show(idx + 1, 1), prev = () => show(idx - 1, -1);
@@ -506,6 +523,7 @@ function toast(t) { const el = $("#toast"); el.textContent = t; el.classList.add
 function toggleFav() { if (!cur) return; favs.has(cur.id) ? favs.delete(cur.id) : favs.add(cur.id); saveFavs(); setInfo(cur); buildCards(); markCard(); SFX.click(); toast(favs.has(cur.id) ? "Ajouté aux favoris" : "Retiré des favoris"); }
 function inspect(on) {
   document.body.classList.toggle("inspect", on ?? !document.body.classList.contains("inspect"));
+  if (GL) GL.inspect(document.body.classList.contains("inspect"));
   if (document.body.classList.contains("inspect")) { setPaused(true); SFX.whoosh(); report("inspection de " + (cur && cur.nom)); }
 }
 
@@ -515,9 +533,9 @@ function loop(now) {
   if (!paused && !document.body.classList.contains("crate")) {
     const el = now - timer0; dwellLeft = DWELL - el;
     $("#timerBar").style.width = `${clamp(el / DWELL, 0, 1) * 100}%`;
-    if (el >= DWELL && !ui.drag) next();
+    if (el >= DWELL && !ui.drag && !glDrag) next();
   }
-  if (!curEl) return;
+  if (GL || !curEl) return;
   const t = now / 1000, insp = document.body.classList.contains("inspect");
   if (!ui.drag) {
     ui.rotY += ui.vY; ui.rotX += ui.vX; ui.vY *= .94; ui.vX *= .94;
@@ -546,11 +564,31 @@ stage.addEventListener("wheel", (e) => { e.preventDefault(); ui.zoom = clamp(ui.
 stage.addEventListener("dblclick", () => inspect());
 
 // clic dans le décor : un tir, un impact, des étincelles
+function shoot(x, y) {
+  SFX.shot(); burst(x, y, "#ffb050", 26, 380);
+  holes.push({ x: x * DPR, y: y * DPR, life: 1, cracks: Array.from({ length: 6 }, () => [Math.random() * TAU, 10 + Math.random() * 16, (Math.random() - .5) * .5]) });
+}
+let glDrag = false, hoverT = 0;
+const glc = $("#gl");
+glc.addEventListener("pointerdown", (e) => {
+  if (!GL || document.body.classList.contains("crate")) return;
+  if (GL.hit(e.clientX, e.clientY)) { glDrag = true; GL.dragStart(e.clientX, e.clientY); glc.setPointerCapture(e.pointerId); glc.classList.add("drag"); SFX.click(); }
+  else shoot(e.clientX, e.clientY);
+});
+addEventListener("pointermove", (e) => {
+  if (!GL) return;
+  GL.mouse(e.clientX / innerWidth * 2 - 1, e.clientY / innerHeight * 2 - 1);
+  if (glDrag) GL.dragMove(e.clientX, e.clientY);
+  else if (performance.now() - hoverT > 90) { hoverT = performance.now(); glc.classList.toggle("over", GL.hit(e.clientX, e.clientY)); }
+});
+const glEnd = () => { if (!glDrag) return; glDrag = false; glc.classList.remove("drag"); if (GL.dragEnd() > .2) SFX.whoosh(); };
+glc.addEventListener("pointerup", glEnd); glc.addEventListener("pointercancel", glEnd);
+glc.addEventListener("wheel", (e) => { e.preventDefault(); if (GL) GL.zoom(e.deltaY); }, { passive: false });
+glc.addEventListener("dblclick", (e) => { if (GL && GL.hit(e.clientX, e.clientY)) inspect(); });
 addEventListener("pointerdown", (e) => {
-  if (document.body.classList.contains("crate")) return;
+  if (GL || document.body.classList.contains("crate")) return;
   if (e.target !== document.body && !e.target.classList.contains("layer") && e.target.id !== "spot" && e.target.id !== "floor" && e.target.id !== "flash") return;
-  SFX.shot(); burst(e.clientX, e.clientY, "#ffb050", 26, 380);
-  holes.push({ x: e.clientX * DPR, y: e.clientY * DPR, life: 1, cracks: Array.from({ length: 6 }, () => [Math.random() * TAU, 10 + Math.random() * 16, (Math.random() - .5) * .5]) });
+  shoot(e.clientX, e.clientY);
 });
 
 addEventListener("keydown", (e) => {
@@ -592,6 +630,7 @@ async function openCase(intro) {
   const crate = $("#crate"), box = $("#box"), reel = $("#reel"), strip = $("#strip"), rev = $("#reveal");
   const gen = ++crateGen;
   document.body.classList.add("crate"); crate.hidden = false; crate.classList.remove("out");
+  if (GL) GL.paused = true;                           // la 3D se repose pendant l'ouverture de caisse
   box.className = ""; reel.classList.remove("on"); rev.classList.remove("on"); strip.style.transform = "translateX(0)"; strip.innerHTML = "";
   const win = pickWinner(intro);
   let done = false;
@@ -599,6 +638,7 @@ async function openCase(intro) {
   const finish = () => {
     if (done) return; done = true; crateSkip.timers.forEach(clearTimeout); cancelAnimationFrame(crateSkip.raf);
     crate.classList.add("out"); document.body.classList.remove("crate");
+    if (GL) GL.paused = false;
     setTimeout(() => { if (gen === crateGen) crate.hidden = true; }, 900);
     VIEW = filtered(); let i = VIEW.findIndex((s) => s.id === win.id);
     if (i < 0) { cat = "tout"; buildTabs(); VIEW = SKINS; buildCards(); i = VIEW.findIndex((s) => s.id === win.id); }
@@ -689,6 +729,19 @@ async function poll() {
 }
 
 /* ================= démarrage ================= */
+function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = rej; document.head.appendChild(el); }); }
+async function start3D() {
+  if (/[?&]2d\b/.test(location.search)) return;               // ?2d : ancienne vitrine
+  try {
+    for (const f of ["three.min.js", "CopyShader.js", "LuminosityHighPassShader.js", "EffectComposer.js", "RenderPass.js", "ShaderPass.js", "UnrealBloomPass.js"])
+      if (!(f === "three.min.js" && window.THREE)) await loadScript("web/three/" + f);
+    await loadScript("web/vitrine3d.js");
+    GL = window.Vitrine3D; size();
+    GL.init($("#gl"), bg);
+    document.body.classList.add("gl");
+    report("vitrine en 3D (carte graphique)");
+  } catch (e) { GL = null; size(); report("3D indisponible, vitrine en 2D : " + (e && e.message || e)); }
+}
 async function whenVisible() {
   if (document.visibilityState !== "visible") await new Promise((r) => document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && r()));
   await new Promise((r) => setTimeout(r, 300));
@@ -701,6 +754,7 @@ async function whenVisible() {
   $("#srcPrix").textContent = META.source_prix || "";
   if (LIVE) { try { const e = await (await fetch("etat", { cache: "no-store" })).json(); cmdSeq = e.seq; if (typeof e.sons === "number") sonsVol = clamp(e.sons / 100, 0, 1); } catch (e) {} }
   SFX.init();
+  await start3D();
   buildTabs(); VIEW = filtered(); buildCards();
   requestAnimationFrame(drawBg); requestAnimationFrame(loop);
   setInterval(poll, 400);

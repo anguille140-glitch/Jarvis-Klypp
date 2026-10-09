@@ -41,6 +41,9 @@ et donne les actions à faire (fichiers à lancer) clairement.
   caisse, skins chers qui défilent (inspection 3D souris, zoom, caisses, favoris, tirs dans le décor, bruitages WebAudio),
   pilotable à la voix (outil `fond_ecran`, `VITRINE_RE` / `VITRINE_CMDS`, `find_skin`). Images Steam téléchargées une
   fois dans `.cache/skins` (jamais dans le dépôt). Prix indicatifs SteamAnalyst (sept. 2026) pour 14 skins.
+  3D : `web/vitrine3d.js` (three.js local) transforme l'image en objet épais (bords arrondis, relief de peinture,
+  laque/métal, sol réfléchissant, bloom) ; repli 2D automatique si WebGL échoue (ou `?2d`). Images Steam : essaie
+  `/1024fx1024f` puis la taille par défaut.
 - `session_jeu.py` — « lance-moi une session CS » : FACEIT AC (élévation UAC, ou tâche planifiée sans confirmation) puis
   CS2 via `steam://rungameid/730`, annonces vocales à chaque étape (outil `session_jeu` + voie express).
 - `mode_jeu.py` — mode jeu automatique (psutil) : décharge Ollama et Whisper GPU (Whisper « small » CPU pendant la

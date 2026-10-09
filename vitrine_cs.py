@@ -37,6 +37,17 @@ CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Jarvis-Vitrine"
 
 
+def _pixels(data: bytes) -> int:
+    """Nombre de pixels d'une image (0 si illisible)."""
+    try:
+        from PIL import Image
+        import io
+        with Image.open(io.BytesIO(data)) as im:
+            return im.width * im.height
+    except Exception:  # noqa: BLE001
+        return 0
+
+
 def skins() -> list[dict]:
     try:
         return json.loads(DATA.read_text(encoding="utf-8")).get("skins", [])
@@ -64,14 +75,23 @@ class Vitrine:
         s = next((x for x in skins() if x.get("id") == sid), None)
         if not s or not str(s.get("image", "")).startswith("https://"):
             return None
-        try:
-            req = urllib.request.Request(s["image"], headers={"User-Agent": UA})
-            with urllib.request.urlopen(req, timeout=15) as r:
-                data = r.read()
-        except Exception as e:  # noqa: BLE001
-            log.info("Vitrine : image de %s indisponible (%s)", sid, e)
-            return None
-        if len(data) < 500:
+        data = None
+        best = 0
+        for suffix in ("/1024fx1024f", ""):                # la plus grande taille que Steam veut bien donner
+            try:
+                req = urllib.request.Request(s["image"].rstrip("/") + suffix, headers={"User-Agent": UA})
+                with urllib.request.urlopen(req, timeout=15) as r:
+                    got = r.read()
+            except Exception as e:  # noqa: BLE001
+                log.debug("Vitrine : %s%s indisponible (%s)", sid, suffix, e)
+                continue
+            px = _pixels(got)
+            if len(got) > 500 and px > best:
+                data, best = got, px
+            if best >= 900 * 600:
+                break
+        if data is None:
+            log.info("Vitrine : image de %s indisponible", sid)
             return None
         IMAGES.mkdir(parents=True, exist_ok=True)
         tmp = f.with_suffix(".tmp")
@@ -145,6 +165,12 @@ class Vitrine:
                 if p == "etat":
                     return self._send(200, json.dumps(vt.snapshot(), ensure_ascii=False).encode("utf-8"),
                                       "application/json")
+                if p.startswith("web/"):                   # moteur 3D (three.js local)
+                    f = (BASE / p).resolve()
+                    web = (BASE / "web").resolve()
+                    if web in f.parents and f.is_file() and f.suffix == ".js":
+                        return self._send(200, f.read_bytes(), "text/javascript; charset=utf-8", cache=True)
+                    return self._send(404, b"", "text/plain")
                 if p.startswith("img/"):
                     data = vt.image(p[4:])
                     return self._send(200, data, "image/png", cache=True) if data else self._send(404, b"", "text/plain")
