@@ -333,7 +333,7 @@
     beam.position.y = -3; drone.add(beam);
     const spot = new THREE.SpotLight(0xbfefff, 9, 14, .32, .7, 1.6); drone.add(spot); spot.position.set(0, -.1, 0); drone.add(spot.target); spot.target.position.set(0, -6, 0);
     // pluie (traits fins qui brillent près des lanternes) et éclaboussures sur les pavés
-    const NR = 7000, rs = new Float32Array(NR * 2 * 4), tip = new Float32Array(NR * 2), rpos = new Float32Array(NR * 2 * 3);
+    const NR = 3200, rs = new Float32Array(NR * 2 * 4), tip = new Float32Array(NR * 2), rpos = new Float32Array(NR * 2 * 3);
     for (let i = 0; i < NR; i++) { const s = [(Math.random() - .5) * 22, Math.random() * 14, -32 + Math.random() * 38, 7 + Math.random() * 5];
       for (let k = 0; k < 2; k++) { rs.set(s, (i * 2 + k) * 4); tip[i * 2 + k] = k; } }
     const rgeo = new THREE.BufferGeometry(); rgeo.setAttribute("position", new THREE.BufferAttribute(rpos, 3)); rgeo.setAttribute("seed", new THREE.BufferAttribute(rs, 4)); rgeo.setAttribute("tip", new THREE.BufferAttribute(tip, 1));
@@ -349,12 +349,12 @@
           float lit = 0.; for (int i = 0; i < 6; i++) { vec3 d = p - uL[i]; lit += 1.4 / (1. + dot(d, d) * 1.2); }
           vC = mix(vec3(.55, .65, .8), vec3(1., .78, .5), clamp(lit, 0., 1.)) * (1. + lit * 1.2 + uFlash * 3.);
           vec4 mv = modelViewMatrix * vec4(p, 1.); gl_Position = projectionMatrix * mv;
-          float dist = -mv.z; vA = mix(.5, .05, tip) * smoothstep(34., 3., dist) * smoothstep(.8, 2.2, dist); }`,
+          float dist = -mv.z; vA = mix(.38, .04, tip) * smoothstep(34., 3., dist) * smoothstep(.8, 2.2, dist); }`,
       fragmentShader: "varying float vA; varying vec3 vC; void main(){ gl_FragColor = vec4(vC, vA); }",
       transparent: true, depthWrite: false,
     });
     const rain = add(new THREE.LineSegments(rgeo, rainMat)); rain.frustumCulled = false;
-    const NS = 1600, ss = new Float32Array(NS * 4), spos = new Float32Array(NS * 3);
+    const NS = 900, ss = new Float32Array(NS * 4), spos = new Float32Array(NS * 3);
     for (let i = 0; i < NS; i++) { const near = i < 500; ss.set([near ? (Math.random() - .5) * 6 : (Math.random() - .5) * 9, near ? 2 - Math.random() * 6 : 3 - Math.random() * 30, Math.random(), .8 + Math.random() * 1.6], i * 4); }
     const sgeo = new THREE.BufferGeometry(); sgeo.setAttribute("position", new THREE.BufferAttribute(spos, 3)); sgeo.setAttribute("seed", new THREE.BufferAttribute(ss, 4));
     const splashMat = new THREE.ShaderMaterial({

@@ -142,7 +142,27 @@
       for (let y = 0; y < h; y++) { out[y * w + x] = s / k; s += tmp[clamp(y + r + 1, 0, h - 1) * w + x] - tmp[clamp(y - r, 0, h - 1) * w + x]; } }
     return out;
   }
-  function analyse(img) {
+  // distance de chaque pixel au bord de la silhouette (chanfrein 3-4, deux passes)
+  function distField(alpha, w, h) {
+    const d = new Float32Array(w * h), INF = 1e6;
+    for (let i = 0; i < w * h; i++) d[i] = alpha[i] > .5 ? INF : 0;
+    const at = (x, y) => (x < 0 || y < 0 || x >= w || y >= h) ? 0 : d[y * w + x];
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; if (!d[i]) continue;
+      d[i] = Math.min(d[i], at(x - 1, y) + 1, at(x, y - 1) + 1, at(x - 1, y - 1) + 1.414, at(x + 1, y - 1) + 1.414); }
+    for (let y = h - 1; y >= 0; y--) for (let x = w - 1; x >= 0; x--) { const i = y * w + x; if (!d[i]) continue;
+      d[i] = Math.min(d[i], at(x + 1, y) + 1, at(x, y + 1) + 1, at(x + 1, y + 1) + 1.414, at(x - 1, y + 1) + 1.414); }
+    return d;
+  }
+  // image plus nette (masque flou inversé) : les détails de la peinture ressortent
+  function sharpen(cv, amount) {
+    const W = cv.width, H = cv.height, x = cv.getContext("2d", { willReadFrequently: true }), src = x.getImageData(0, 0, W, H);
+    const [b, bx] = (() => { const c = document.createElement("canvas"); c.width = W; c.height = H; return [c, c.getContext("2d", { willReadFrequently: true })]; })();
+    bx.filter = "blur(1.2px)"; bx.drawImage(cv, 0, 0);
+    const bl = bx.getImageData(0, 0, W, H).data, d = src.data;
+    for (let i = 0; i < d.length; i += 4) for (let c = 0; c < 3; c++) d[i + c] = clamp(d[i + c] + (d[i + c] - bl[i + c]) * amount, 0, 255);
+    x.putImageData(src, 0, 0);
+  }
+  function analyse(img, cat) {
     const W0 = img.naturalWidth, H0 = img.naturalHeight;
     const c = document.createElement("canvas"); c.width = W0; c.height = H0;
     const x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(img, 0, 0);
@@ -155,30 +175,36 @@
     const cw = x1 - x0 + 1, ch = y1 - y0 + 1;
     // peinture recadrée (agrandie proprement si l'image est petite : meilleures mipmaps)
     const up = cw < 900 ? 2 : 1, tex = document.createElement("canvas"); tex.width = cw * up; tex.height = ch * up;
-    const tx = tex.getContext("2d"); tx.imageSmoothingQuality = "high"; tx.drawImage(c, x0, y0, cw, ch, 0, 0, tex.width, tex.height);
+    const tx = tex.getContext("2d", { willReadFrequently: true }); tx.imageSmoothingQuality = "high"; tx.drawImage(c, x0, y0, cw, ch, 0, 0, tex.width, tex.height);
+    try { sharpen(tex, .6); } catch (e) {}
     // carte de hauteur (silhouette arrondie) et carte de détails (relief de la peinture), en basse définition
     const aw = Math.min(400, cw), ah = Math.max(8, Math.round(ch * aw / cw));
     const a = document.createElement("canvas"); a.width = aw; a.height = ah;
     const ax = a.getContext("2d", { willReadFrequently: true }); ax.imageSmoothingQuality = "high"; ax.drawImage(c, x0, y0, cw, ch, 0, 0, aw, ah);
     const ad = ax.getImageData(0, 0, aw, ah).data, alpha = new Float32Array(aw * ah), lum = new Float32Array(aw * ah);
     for (let i = 0; i < aw * ah; i++) { alpha[i] = ad[i * 4 + 3] / 255; lum[i] = (ad[i * 4] * .3 + ad[i * 4 + 1] * .59 + ad[i * 4 + 2] * .11) / 255 * alpha[i]; }
-    const r = Math.max(2, Math.round(aw * .012));
-    let b = boxBlur(alpha, aw, ah, r); b = boxBlur(b, aw, ah, r);
-    const height = new Float32Array(aw * ah);
-    for (let i = 0; i < aw * ah; i++) { const t = clamp((b[i] - .5) / .45, 0, 1); height[i] = t * t * (3 - 2 * t); }
+    // profil d'épaisseur selon la distance au bord :
+    //  couteaux : en biseau jusqu'au fil (tranchant fin, dos plus épais) ; gants : rembourrés ; armes : flancs plats, arêtes vives
+    const dist = distField(alpha, aw, ah), height = new Float32Array(aw * ah);
+    const D = cat === "couteau" ? aw * .055 : cat === "gants" ? aw * .11 : aw * .022;
+    for (let i = 0; i < aw * ah; i++) {
+      const q = clamp(dist[i] / D, 0, 1);
+      height[i] = cat === "couteau" ? q : cat === "gants" ? Math.sqrt(q) : q * q * (3 - 2 * q);
+    }
+    { const hb = boxBlur(height, aw, ah, 1); for (let i = 0; i < aw * ah; i++) height[i] = alpha[i] > .5 ? hb[i] : 0; }
     // relief fin : la peinture « en creux / en bosse » (passe-haut de la luminosité)
     const lb = boxBlur(lum, aw, ah, 2), detail = new Float32Array(aw * ah);
     for (let i = 0; i < aw * ah; i++) detail[i] = (lum[i] - lb[i]) * alpha[i];
     const n = document.createElement("canvas"); n.width = aw; n.height = ah; const nx = n.getContext("2d"), nd = nx.createImageData(aw, ah);
     for (let y = 0; y < ah; y++) for (let xx = 0; xx < aw; xx++) {
-      const i = y * aw + xx, dx = (detail[y * aw + clamp(xx + 1, 0, aw - 1)] - detail[y * aw + clamp(xx - 1, 0, aw - 1)]) * 7,
-        dy = (detail[clamp(y + 1, 0, ah - 1) * aw + xx] - detail[clamp(y - 1, 0, ah - 1) * aw + xx]) * 7, l = Math.hypot(dx, dy, 1);
+      const i = y * aw + xx, dx = (detail[y * aw + clamp(xx + 1, 0, aw - 1)] - detail[y * aw + clamp(xx - 1, 0, aw - 1)]) * 2.2,
+        dy = (detail[clamp(y + 1, 0, ah - 1) * aw + xx] - detail[clamp(y - 1, 0, ah - 1) * aw + xx]) * 2.2, l = Math.hypot(dx, dy, 1);
       nd.data[i * 4] = (-dx / l * .5 + .5) * 255; nd.data[i * 4 + 1] = (dy / l * .5 + .5) * 255; nd.data[i * 4 + 2] = (1 / l * .5 + .5) * 255; nd.data[i * 4 + 3] = 255;
     }
     nx.putImageData(nd, 0, 0);
     // quelques points bien opaques pour les éclats lumineux
     const spots = [];
-    for (let k = 0; k < 400 && spots.length < 8; k++) { const i = Math.random() * aw * ah | 0; if (height[i] > .9 && lum[i] > .45) spots.push([(i % aw) / aw, (i / aw | 0) / ah]); }
+    for (let k = 0; k < 400 && spots.length < 8; k++) { const i = Math.random() * aw * ah | 0; if (height[i] > .55 && lum[i] > .45) spots.push([(i % aw) / aw, (i / aw | 0) / ah]); }
     return { tex, normal: n, aspect: cw / ch, aw, ah, height, alpha, spots };
   }
   function sample(arr, aw, ah, u, v) {
@@ -194,7 +220,7 @@
     return g;
   }
   const LOOK = {                       // matière selon le type d'arme
-    couteau: { metalness: .62, roughness: .26, clearcoat: .55, clearcoatRoughness: .1, thick: .05 },
+    couteau: { metalness: .36, roughness: .22, clearcoat: .75, clearcoatRoughness: .05, thick: .04 },
     gants: { metalness: .04, roughness: .62, clearcoat: .12, clearcoatRoughness: .5, thick: .12 },
     sniper: { metalness: .32, roughness: .34, clearcoat: .9, clearcoatRoughness: .07, thick: .085 },
     fusil: { metalness: .32, roughness: .34, clearcoat: .9, clearcoatRoughness: .07, thick: .085 },
@@ -237,7 +263,7 @@
   V.show = async function (skin, url, dir = 1) {
     let im;
     try { im = await loadImage(url); } catch (e) { return false; }
-    const an = analyse(im), it = build(an, skin);
+    const an = analyse(im, skin.categorie), it = build(an, skin);
     it.t0 = performance.now(); it.dir = dir; it.state = "enter";
     for (const o of items) if (o.state !== "leave") { o.state = "leave"; o.tl = performance.now(); }
     it.mirror.visible = !decor;

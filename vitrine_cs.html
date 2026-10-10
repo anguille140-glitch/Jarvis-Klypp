@@ -361,9 +361,12 @@ const SFX = (() => {
     if (ambOn || !ac || ac.state !== "running") return; ambOn = true;
     const lay = (hp, lp, gain) => { const s = ac.createBufferSource(), h = ac.createBiquadFilter(), l = ac.createBiquadFilter(), g = ac.createGain();
       s.buffer = nbuf; s.loop = true; h.type = "highpass"; h.frequency.value = hp; l.type = "lowpass"; l.frequency.value = lp; g.gain.value = gain; s.connect(h); h.connect(l); l.connect(g); g.connect(out); s.start(); };
-    lay(900, 9000, .045); lay(80, 520, .05);
-    setInterval(() => { if (!ok()) return; for (let k = 0; k < 2; k++) if (Math.random() < .55) tone("sine", 2400 + Math.random() * 4500, 1800 + Math.random() * 2000, .006 + Math.random() * .008, .004 + Math.random() * .016, { wet: 0, pan: Math.random() * 1.8 - .9, at: Math.random() * .03 }); }, 34);
-    setInterval(() => { if (ok() && Math.random() < .5) { tone("sine", 1250, 650, .06, .05, { wet: .3, pan: -.6 }); noise("bandpass", 2600, 1800, 6, .03, .04, { pan: -.6 }); } }, 2600);
+    lay(500, 2600, .006);                               // un souffle de pluie à peine audible
+    // des gouttes : un « plic » d'eau (petite bulle qui monte dans les aigus), espacées, à gauche et à droite
+    const drop = (near) => { const f = 700 + Math.random() * 1500, p = near ? .05 + Math.random() * .05 : .012 + Math.random() * .02;
+      tone("sine", f, f * (1.8 + Math.random() * .8), .025 + Math.random() * .03, p, { wet: near ? .25 : .45, pan: Math.random() * 1.8 - .9, a: .001 }); };
+    (function rainLoop() { if (ok()) drop(Math.random() < .18); setTimeout(rainLoop, 90 + Math.random() * 260); })();
+    setInterval(() => { if (ok() && Math.random() < .6) { tone("sine", 900, 1900, .04, .05, { wet: .35, pan: -.6 }); setTimeout(() => tone("sine", 1100, 2300, .035, .035, { wet: .35, pan: -.6 }), 380); } }, 3100);
   }
   return {
     init, setVol(v) { vol = v; if (out) out.gain.value = v; },
@@ -794,7 +797,8 @@ async function poll() {
 }
 
 /* ================= démarrage ================= */
-function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = rej; document.head.appendChild(el); }); }
+const VER = "2026-10-10c";
+function loadScript(src) { if (src.startsWith("web/")) src += "?v=" + VER; return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = rej; document.head.appendChild(el); }); }
 async function start3D() {
   if (/[?&]2d\b/.test(location.search)) return;               // ?2d : ancienne vitrine
   try {

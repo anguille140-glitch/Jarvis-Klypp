@@ -169,7 +169,7 @@ class Vitrine:
                     f = (BASE / p).resolve()
                     web = (BASE / "web").resolve()
                     if web in f.parents and f.is_file() and f.suffix == ".js":
-                        return self._send(200, f.read_bytes(), "text/javascript; charset=utf-8", cache=True)
+                        return self._send(200, f.read_bytes(), "text/javascript; charset=utf-8")
                     return self._send(404, b"", "text/plain")
                 if p.startswith("img/"):
                     data = vt.image(p[4:])
