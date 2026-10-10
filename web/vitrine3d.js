@@ -8,7 +8,7 @@
   const V = { ready: false };
   const FLOOR = -1.0;
   let R, scene, cam, composer, finalPass, bgTex, glow, ring, cone, embers, emberVel, keyL, rimA, rimB, sweepL, holder;
-  let items = [], rarity = null, lastNow = 0;
+  let items = [], rarity = null, lastNow = 0, decor = null, SKIN_Y = .22, CAM_Y = .2, LOOK_Y = .02;
   const st = { yaw: 0, pitch: 0, vy: 0, vp: 0, drag: null, lastUser: -1e9, zoom: 1, inspect: false, mx: 0, my: 0, smx: 0, smy: 0 };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const ease = (t) => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
@@ -48,22 +48,43 @@
     R.toneMapping = THREE.ACESFilmicToneMapping;
     R.toneMappingExposure = 1.05;
     scene = new THREE.Scene();
-    bgTex = new THREE.CanvasTexture(bgCanvas); bgTex.encoding = THREE.sRGBEncoding;
-    scene.background = bgTex;
-    cam = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, .1, 100);
-    cam.position.set(0, .18, 6);
+    cam = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, .1, 140);
     const pm = new THREE.PMREMGenerator(R);
-    scene.environment = pm.fromScene(envScene(), .035).texture;
-    // lumières : principale chaude, deux contre-jours à la couleur de la rareté, un reflet qui suit la souris
-    scene.add(new THREE.HemisphereLight(0x8a96a8, 0x1a1208, .45));
-    keyL = new THREE.DirectionalLight(0xffe4be, 2.4); keyL.position.set(-3, 4, 5); scene.add(keyL);
-    rimA = new THREE.PointLight(0xffffff, 3.2, 14, 1.6); rimA.position.set(3.4, 1.4, -2.2); scene.add(rimA);
-    rimB = new THREE.PointLight(0xffffff, 2, 14, 1.6); rimB.position.set(-3.6, -.6, -2.4); scene.add(rimB);
+    // décor du village de nuit (web/vitrine_decor.js) s'il est là, sinon le studio sombre d'origine
+    try { decor = window.VitrineDecor ? window.VitrineDecor.build({ THREE, scene, R, FLOOR }) : null; } catch (e) { console.error(e); decor = null; scene.fog = null; }
+    if (decor) {
+      SKIN_Y = .5; CAM_Y = .62; LOOK_Y = .32; V.on = decor.on;
+      R.toneMappingExposure = .82;
+      scene.environment = pm.fromScene(decor.envScene(), .035).texture;
+      // éclairage de théâtre : seul le skin est dans la lumière, la ruelle reste dans la nuit
+      keyL = new THREE.SpotLight(0xfff0dc, 10, 16, .36, .55, 1.2); keyL.position.set(-2.4, 5.4, 5.2); keyL.target.position.set(0, SKIN_Y, 0); scene.add(keyL, keyL.target);
+      rimA = new THREE.PointLight(0xffffff, 3.4, 6, 1.6); rimB = new THREE.PointLight(0xffffff, 2.2, 6, 1.6);
+    } else {
+      bgTex = new THREE.CanvasTexture(bgCanvas); bgTex.encoding = THREE.sRGBEncoding;
+      scene.background = bgTex;
+      scene.environment = pm.fromScene(envScene(), .035).texture;
+      scene.add(new THREE.HemisphereLight(0x8a96a8, 0x1a1208, .45));
+      keyL = new THREE.DirectionalLight(0xffe4be, 2.4); keyL.position.set(-3, 4, 5); scene.add(keyL);
+      rimA = new THREE.PointLight(0xffffff, 3.2, 14, 1.6); rimB = new THREE.PointLight(0xffffff, 2, 14, 1.6);
+    }
+    V.on = V.on || (() => {}); V.hasDecor = !!decor;
+    cam.position.set(0, CAM_Y, 6);
+    // contre-jours à la couleur de la rareté, et un reflet qui suit la souris
+    rimA.position.set(3.4, 1.4, -2.2); scene.add(rimA);
+    rimB.position.set(-3.6, -.6, -2.4); scene.add(rimB);
     sweepL = new THREE.PointLight(0xfff6e8, 2.2, 7, 1.8); sweepL.position.set(0, 0, 2.4); scene.add(sweepL);
     // halo derrière l'objet
     glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: gradTex([[0, "rgba(255,255,255,.95)"], [.35, "rgba(255,255,255,.28)"], [1, "rgba(255,255,255,0)"]]),
       blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: .3 }));
-    glow.scale.set(6.5, 4.6, 1); glow.position.set(0, .25, -1.6); scene.add(glow);
+    glow.scale.set(6.5, 4.6, 1); glow.position.set(0, SKIN_Y, -1.6); scene.add(glow);
+    if (decor) glow.material.opacity = .16;
+    holder = new THREE.Group(); scene.add(holder);
+    if (!decor) studio(THREE);
+    composerSetup(THREE);
+    V.ready = true;
+    requestAnimationFrame(frame);
+  };
+  function studio(THREE) {
     // sol sombre et brillant (on voit le reflet de l'objet au travers), quadrillage discret
     const fc = document.createElement("canvas"); fc.width = fc.height = 1024; const fx = fc.getContext("2d");
     const fg = fx.createRadialGradient(512, 512, 0, 512, 512, 512);
@@ -89,18 +110,19 @@
     embers = new THREE.Points(eg, new THREE.PointsMaterial({ size: .035, map: gradTex([[0, "rgba(255,255,255,1)"], [.3, "rgba(255,200,120,.6)"], [1, "rgba(255,160,60,0)"]], 64, 64),
       color: 0xffb060, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
     scene.add(embers);
-    holder = new THREE.Group(); scene.add(holder);
+  }
+  function composerSetup(THREE) {
     // rendu cinéma : bloom + aberration chromatique légère + vignette + grain
     composer = new THREE.EffectComposer(R);
     composer.addPass(new THREE.RenderPass(scene, cam));
     composer.addPass(new THREE.UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), .5, .5, .86));
     finalPass = new THREE.ShaderPass({
-      uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uRes: { value: new THREE.Vector2(innerWidth, innerHeight) }, uDim: { value: 0 } },
+      uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uRes: { value: new THREE.Vector2(innerWidth, innerHeight) }, uDim: { value: 0 }, uFlash: { value: 0 } },
       vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
-      fragmentShader: `uniform sampler2D tDiffuse; uniform float uTime; uniform vec2 uRes; uniform float uDim; varying vec2 vUv;
+      fragmentShader: `uniform sampler2D tDiffuse; uniform float uTime; uniform vec2 uRes; uniform float uDim; uniform float uFlash; varying vec2 vUv;
         void main(){ vec2 c = vUv - .5; float d = dot(c, c); vec2 o = c * d * .016;
           vec3 col = vec3(texture2D(tDiffuse, vUv + o).r, texture2D(tDiffuse, vUv).g, texture2D(tDiffuse, vUv - o).b);
-          col *= 1. - d * (.95 + uDim); col = pow(max(col, 0.), vec3(1. / 2.2));
+          col *= 1. - d * (.95 + uDim); col += vec3(.55, .65, .9) * uFlash * .12; col = pow(max(col, 0.), vec3(1. / 2.2));
           float n = fract(sin(dot(floor(vUv * uRes) + floor(uTime * 24.), vec2(12.9898, 78.233))) * 43758.5453);
           gl_FragColor = vec4(col + (n - .5) * .03, 1.); }`,
     });
@@ -109,9 +131,7 @@
       R.setSize(innerWidth, innerHeight, false); composer.setSize(innerWidth, innerHeight);
       cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); finalPass.uniforms.uRes.value.set(innerWidth, innerHeight);
     });
-    V.ready = true;
-    requestAnimationFrame(frame);
-  };
+  }
 
   /* ---------- l'image officielle devient un objet épais ---------- */
   function boxBlur(src, w, h, r) {
@@ -220,6 +240,7 @@
     const an = analyse(im), it = build(an, skin);
     it.t0 = performance.now(); it.dir = dir; it.state = "enter";
     for (const o of items) if (o.state !== "leave") { o.state = "leave"; o.tl = performance.now(); }
+    it.mirror.visible = !decor;
     holder.add(it.g, it.mirror); items.push(it);
     V.setRarity(skin.couleur);
     st.yaw = 0; st.pitch = 0; st.vy = st.vp = 0; st.zoom = 1;
@@ -228,7 +249,7 @@
   V.setRarity = function (hex) {
     const c = new (T().Color)(hex); rarity = c;
     rimA.color.copy(c); rimB.color.copy(c).lerp(new (T().Color)(0xffffff), .35);
-    glow.material.color.copy(c); ring.material.color.copy(c);
+    glow.material.color.copy(c); if (ring) ring.material.color.copy(c); if (decor) decor.setRarity(hex);
   };
   V.inspect = (on) => { st.inspect = on; };
   V.mouse = (nx, ny) => { st.mx = nx; st.my = ny; };
@@ -278,7 +299,7 @@
         const q = clamp((now - it.tl) / 650, 0, 1); x = -it.dir * 5.2 * q * q; extraYaw = it.dir * 2.2 * q; s = 1 - .45 * q;
         if (q >= 1) { dispose(it); items.splice(i, 1); continue; }
       }
-      g.position.set(x, .22 + Math.sin(t * 1.15) * .055, 0);
+      g.position.set(x, SKIN_Y + Math.sin(t * 1.15) * .055, 0);
       g.rotation.set(Math.sin(tt * .6) * .07 + st.pitch, yaw + extraYaw + st.yaw, Math.sin(tt * .38) * .035, "YXZ");
       g.scale.setScalar(s);
       g.updateMatrix();
@@ -293,22 +314,25 @@
     const cur = items.find((o) => o.state !== "leave"), tt = cur ? (now - cur.t0) / 1000 : 0;
     const dz = (6.1 - .55 * ease(clamp(tt / 9, 0, 1))) * (st.inspect ? .78 : 1) / st.zoom;
     cam.position.x += (st.smx * .32 - cam.position.x) * Math.min(1, dt * 3);
-    cam.position.y += (.2 - st.smy * .16 - cam.position.y) * Math.min(1, dt * 3);
+    cam.position.y += (CAM_Y - st.smy * .16 - cam.position.y) * Math.min(1, dt * 3);
     cam.position.z += (dz - cam.position.z) * Math.min(1, dt * 2.5);
-    cam.lookAt(0, .02, 0);
+    cam.lookAt(0, LOOK_Y, 0);
     // lumières vivantes
-    sweepL.position.set(st.smx * 3.2, -st.smy * 2.2 + .3, 2.3);
+    sweepL.position.set(st.smx * 3.2, -st.smy * 2.2 + SKIN_Y, 2.3);
     rimA.position.set(3.4 * Math.cos(t * .25), 1.4, -2.2 + Math.sin(t * .25));
-    glow.material.opacity = (st.inspect ? .2 : .3) + .05 * Math.sin(t * 1.3);
-    ring.scale.setScalar(1 + .06 * Math.sin(t * 1.3));
-    cone.rotation.y = t * .05;
-    const p = embers.geometry.attributes.position;
-    for (let i = 0; i < p.count; i++) {
-      let y = p.getY(i) + emberVel[i] * dt; if (y > FLOOR + 6) y = FLOOR;
-      p.setY(i, y); p.setX(i, p.getX(i) + Math.sin(t + i) * .002);
+    if (decor) { const fl = decor.update(dt, t, cam); glow.material.opacity = .16 + fl * .2; finalPass.uniforms.uFlash.value = fl; }
+    else {
+      glow.material.opacity = (st.inspect ? .2 : .3) + .05 * Math.sin(t * 1.3);
+      ring.scale.setScalar(1 + .06 * Math.sin(t * 1.3));
+      cone.rotation.y = t * .05;
+      const p = embers.geometry.attributes.position;
+      for (let i = 0; i < p.count; i++) {
+        let y = p.getY(i) + emberVel[i] * dt; if (y > FLOOR + 6) y = FLOOR;
+        p.setY(i, y); p.setX(i, p.getX(i) + Math.sin(t + i) * .002);
+      }
+      p.needsUpdate = true;
+      bgTex.needsUpdate = true;
     }
-    p.needsUpdate = true;
-    bgTex.needsUpdate = true;
     finalPass.uniforms.uTime.value = t;
     finalPass.uniforms.uDim.value += ((st.inspect ? .6 : 0) - finalPass.uniforms.uDim.value) * Math.min(1, dt * 3);
     composer.render();

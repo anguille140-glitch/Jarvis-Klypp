@@ -44,6 +44,10 @@ et donne les actions à faire (fichiers à lancer) clairement.
   3D : `web/vitrine3d.js` (three.js local) transforme l'image en objet épais (bords arrondis, relief de peinture,
   laque/métal, sol réfléchissant, bloom) ; repli 2D automatique si WebGL échoue (ou `?2d`). Images Steam : essaie
   `/1024fx1024f` puis la taille par défaut.
+  Décor `web/vitrine_decor.js` : village italien de nuit sous la pluie (création originale, pas d'assets Valve) —
+  pavés mouillés, façades/volets/lierre/mousse, toits, lanternes, guirlandes, arche, clocher + horloge holo, néons,
+  panneau défilant, drone, socle holo + anneaux + scan, pluie (shader), éclaboussures, éclairs (événement « eclair »
+  → tonnerre dans la page). Sons : moteur SFX à attaques nettes + ambiance pluie ; visière avec gouttes (canvas).
 - `session_jeu.py` — « lance-moi une session CS » : FACEIT AC (élévation UAC, ou tâche planifiée sans confirmation) puis
   CS2 via `steam://rungameid/730`, annonces vocales à chaque étape (outil `session_jeu` + voie express).
 - `mode_jeu.py` — mode jeu automatique (psutil) : décharge Ollama et Whisper GPU (Whisper « small » CPU pendant la

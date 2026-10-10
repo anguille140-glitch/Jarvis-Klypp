@@ -147,6 +147,22 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
   border: 1px solid var(--amber); color: var(--amber-hot); transition: opacity .3s, transform .3s; backdrop-filter: blur(8px); }
 #toast.on { opacity: 1; transform: translate(-50%, 0); }
 
+/* ---------- mode nuit : verre, coins lumineux, accents cyan ---------- */
+#visor { z-index: 7; pointer-events: none; display: none; }
+body.nuit #visor { display: block; }
+body.nuit { --glass: rgba(8, 13, 20, .58); --line: rgba(120, 200, 255, .16); }
+body.nuit #info { padding: 30px 24px 20px; background: linear-gradient(160deg, rgba(10,16,24,.72), rgba(6,9,14,.55)); backdrop-filter: blur(10px) saturate(1.2);
+  border: 1px solid rgba(79,216,255,.18); clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 18px)); }
+body.nuit #info::before { content: "DONNÉES DE L'OBJET"; position: absolute; top: 8px; right: 26px; font-family: var(--f-head); font-size: 10px; letter-spacing: .32em; color: #4fd8ff; opacity: .8; }
+body.nuit #info::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(79,216,255,.035) 0 1px, transparent 1px 3px); }
+body.nuit #top { background: linear-gradient(180deg, rgba(4,7,12,.85), rgba(4,7,12,0)); }
+body.nuit #top::after { content: ""; position: absolute; left: 0; right: 0; bottom: 6px; height: 1px; background: linear-gradient(90deg, transparent, rgba(79,216,255,.5), transparent);
+  animation: hudline 6s linear infinite; background-size: 50% 100%; background-repeat: no-repeat; }
+@keyframes hudline { from { background-position: -50% 0; } to { background-position: 150% 0; } }
+body.nuit .card { background: linear-gradient(160deg, rgba(20,30,42,.85), rgba(8,11,16,.85)); }
+body.nuit .mid { background: rgba(8,13,20,.62); }
+body.nuit #hint { color: rgba(150,220,255,.75); }
+
 /* mode inspection */
 body.inspect #info, body.inspect #acts, body.inspect #rail, body.inspect #hint, body.inspect #top { opacity: 0; pointer-events: none; }
 #info, #acts, #rail, #hint, #top { transition: opacity .5s; }
@@ -304,48 +320,72 @@ const saveFavs = () => { try { localStorage.setItem("vitrine_favs", JSON.stringi
 const img = (s) => LIVE ? `img/${s.id}` : s.image;
 function report(texte) { if (LIVE) fetch("action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "journal", texte }) }).catch(() => {}); }
 
-/* ================= bruitages (fabriqués en direct) ================= */
+/* ================= bruitages (fabriqués en direct, attaques nettes, réverbe courte de ruelle) ================= */
 const SFX = (() => {
-  let ac = null, out = null, rev = null, nbuf = null;
+  let ac = null, out = null, rev = null, nbuf = null, ambOn = false, vol = .6;
   function init() {
     if (ac) return;
-    try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
-    const comp = ac.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 5; comp.connect(ac.destination);
-    out = ac.createGain(); out.gain.value = sonsVol; out.connect(comp);
-    const len = ac.sampleRate * 1.8 | 0, ir = ac.createBuffer(2, len, ac.sampleRate);
-    for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3); }
-    const conv = ac.createConvolver(); conv.buffer = ir; rev = ac.createGain(); rev.gain.value = .45; rev.connect(conv); conv.connect(out);
-    nbuf = ac.createBuffer(1, ac.sampleRate, ac.sampleRate); const nd = nbuf.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
-    const wake = () => ac.state !== "running" && ac.resume(); addEventListener("pointerdown", wake); addEventListener("keydown", wake); ac.resume();
+    try { ac = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: "interactive" }); } catch (e) { return; }
+    const lim = ac.createDynamicsCompressor(); lim.threshold.value = -6; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = .001; lim.release.value = .08; lim.connect(ac.destination);
+    const shelf = ac.createBiquadFilter(); shelf.type = "highshelf"; shelf.frequency.value = 5500; shelf.gain.value = 3.5; shelf.connect(lim);
+    out = ac.createGain(); out.gain.value = vol; out.connect(shelf);
+    const len = ac.sampleRate * 1.1 | 0, pre = ac.sampleRate * .012 | 0, ir = ac.createBuffer(2, len, ac.sampleRate);
+    for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = pre; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 4); }
+    const conv = ac.createConvolver(); conv.buffer = ir; rev = ac.createGain(); rev.gain.value = .22; rev.connect(conv); conv.connect(out);
+    nbuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate); const nd = nbuf.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+    const wake = () => { if (ac.state !== "running") ac.resume().then(ambience); }; addEventListener("pointerdown", wake); addEventListener("keydown", wake);
+    ac.resume().then(ambience).catch(() => {});
   }
-  const ok = () => ac && ac.state === "running" && !muted && sonsVol > 0;
-  function bus(wet) { const g = ac.createGain(); g.connect(out); if (wet) { const s = ac.createGain(); s.gain.value = wet; g.connect(s); s.connect(rev); } return g; }
+  const ok = () => ac && ac.state === "running" && vol > 0;
+  function bus(wet, pan, panTo, dur) {
+    const g = ac.createGain(); let last = g;
+    if (pan || panTo) { const p = ac.createStereoPanner(); p.pan.setValueAtTime(pan || 0, ac.currentTime); if (panTo !== undefined) p.pan.linearRampToValueAtTime(panTo, ac.currentTime + dur); g.connect(p); last = p; }
+    last.connect(out); if (wet) { const s = ac.createGain(); s.gain.value = wet; last.connect(s); s.connect(rev); }
+    return g;
+  }
   function env(g, t0, a, p, d) { g.gain.setValueAtTime(.0001, t0); g.gain.exponentialRampToValueAtTime(p, t0 + a); g.gain.exponentialRampToValueAtTime(.0001, t0 + d); }
-  function tone(type, f0, f1, d, p, at = 0, wet = .2, lp = 0) {
-    if (!ok()) return; const t0 = ac.currentTime + at, o = ac.createOscillator(), g = ac.createGain(); o.type = type;
-    o.frequency.setValueAtTime(f0, t0); if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, t0 + d);
-    let last = o; if (lp) { const f = ac.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = lp; o.connect(f); last = f; }
-    last.connect(g); g.connect(bus(wet)); env(g, t0, Math.min(.01, d / 4), p, d); o.start(t0); o.stop(t0 + d + .05);
+  function tone(type, f0, f1, d, p, o = {}) {
+    if (!ok()) return; const t0 = ac.currentTime + (o.at || 0), osc = ac.createOscillator(), g = ac.createGain();
+    osc.type = type; osc.frequency.setValueAtTime(f0, t0); if (f1 !== f0) osc.frequency.exponentialRampToValueAtTime(f1, t0 + d);
+    if (o.fm) { const m = ac.createOscillator(), mg = ac.createGain(); m.frequency.value = f0 * o.fm[0]; mg.gain.setValueAtTime(f0 * o.fm[1], t0); mg.gain.exponentialRampToValueAtTime(1, t0 + d); m.connect(mg); mg.connect(osc.frequency); m.start(t0); m.stop(t0 + d + .05); }
+    let last = osc; if (o.lp) { const f = ac.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = o.lp; osc.connect(f); last = f; }
+    last.connect(g); g.connect(bus(o.wet ?? .1, o.pan, o.panTo, d)); env(g, t0, o.a || .002, p, d); osc.start(t0); osc.stop(t0 + d + .05);
   }
-  function noise(kind, f0, f1, q, d, p, at = 0, wet = .2, a = .005) {
-    if (!ok()) return; const t0 = ac.currentTime + at, s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
-    s.buffer = nbuf; s.loop = true; f.type = kind; f.Q.value = q; f.frequency.setValueAtTime(f0, t0); f.frequency.exponentialRampToValueAtTime(f1, t0 + d);
-    s.connect(f); f.connect(g); g.connect(bus(wet)); env(g, t0, a, p, d); s.start(t0); s.stop(t0 + d + .05);
+  function noise(kind, f0, f1, q, d, p, o = {}) {
+    if (!ok()) return; const t0 = ac.currentTime + (o.at || 0), s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+    s.buffer = nbuf; s.loop = true; s.loopStart = Math.random(); f.type = kind; f.Q.value = q; f.frequency.setValueAtTime(f0, t0); f.frequency.exponentialRampToValueAtTime(f1, t0 + d);
+    s.connect(f); f.connect(g); g.connect(bus(o.wet ?? .1, o.pan, o.panTo, d)); env(g, t0, o.a || .001, p, d); s.start(t0, Math.random()); s.stop(t0 + d + .05);
+  }
+  // ambiance : pluie fine sur les pavés, pluie sourde sur les toits, gouttes nettes, gouttière
+  function ambience() {
+    if (ambOn || !ac || ac.state !== "running") return; ambOn = true;
+    const lay = (hp, lp, gain) => { const s = ac.createBufferSource(), h = ac.createBiquadFilter(), l = ac.createBiquadFilter(), g = ac.createGain();
+      s.buffer = nbuf; s.loop = true; h.type = "highpass"; h.frequency.value = hp; l.type = "lowpass"; l.frequency.value = lp; g.gain.value = gain; s.connect(h); h.connect(l); l.connect(g); g.connect(out); s.start(); };
+    lay(900, 9000, .045); lay(80, 520, .05);
+    setInterval(() => { if (!ok()) return; for (let k = 0; k < 2; k++) if (Math.random() < .55) tone("sine", 2400 + Math.random() * 4500, 1800 + Math.random() * 2000, .006 + Math.random() * .008, .004 + Math.random() * .016, { wet: 0, pan: Math.random() * 1.8 - .9, at: Math.random() * .03 }); }, 34);
+    setInterval(() => { if (ok() && Math.random() < .5) { tone("sine", 1250, 650, .06, .05, { wet: .3, pan: -.6 }); noise("bandpass", 2600, 1800, 6, .03, .04, { pan: -.6 }); } }, 2600);
   }
   return {
-    init, setVol(v) { sonsVol = v; if (out) out.gain.value = v; },
-    tick() { tone("square", 2100, 2100, .018, .05, 0, 0, 5000); noise("bandpass", 3500, 3000, 6, .02, .05); },
-    hover() { tone("sine", 1800, 1800, .03, .02, 0, 0); },
-    click() { tone("square", 900, 700, .05, .05, 0, .1, 3000); noise("highpass", 4000, 6000, .7, .03, .04); },
-    whoosh() { noise("bandpass", 600, 3200, 1.2, .5, .32, 0, .2, .12); },
-    unlock() { noise("bandpass", 1800, 900, 4, .12, .4); tone("sine", 180, 60, .35, .6, .02, .2); noise("highpass", 5000, 3000, 2, .25, .15, .1, .3); },
-    shing() { noise("highpass", 3000, 9000, 1, .55, .22, 0, .4, .01); tone("sine", 2637, 2637, 1.2, .08, .02, .6); tone("sine", 3951, 3951, .9, .05, .05, .6); },
+    init, setVol(v) { vol = v; if (out) out.gain.value = v; },
+    tick() { noise("bandpass", 5200, 4800, 3, .008, .38); tone("sine", 3400, 3200, .01, .12, { wet: 0 }); },
+    hover() { tone("sine", 2900, 2900, .014, .035, { wet: 0 }); },
+    click() { noise("highpass", 2500, 4000, .7, .012, .28); tone("square", 1350, 1050, .024, .07, { lp: 6000, wet: .05 }); },
+    whoosh(dir = 1) { noise("bandpass", 500, 2900, 1.6, .34, .4, { a: .07, pan: -.75 * dir, panTo: .75 * dir, wet: .15 }); },
+    unlock() { noise("bandpass", 2300, 2200, 8, .028, .55); noise("bandpass", 3400, 3300, 8, .028, .5, { at: .045 }); tone("sine", 140, 55, .2, .5, { wet: .15 }); noise("highpass", 6000, 8000, 1, .12, .12, { at: .06 }); },
+    shing() { tone("sine", 2350, 2300, 1.1, .1, { fm: [1.414, 3], wet: .3, pan: -.4, panTo: .4 }); tone("sine", 3730, 3700, .8, .05, { fm: [1.73, 2], wet: .3 }); noise("highpass", 4000, 11000, .8, .42, .22, { a: .01, pan: -.6, panTo: .6 }); },
     reveal(gold) {
-      tone("triangle", 523, 523, 1.4, .14, 0, .6); tone("triangle", 659, 659, 1.4, .12, .09, .6); tone("triangle", 784, 784, 1.6, .12, .18, .6);
-      if (gold) { tone("triangle", 1047, 1047, 2, .12, .3, .8); tone("sine", 1568, 1568, 2.2, .06, .42, .9); noise("highpass", 6000, 9000, .5, 1.2, .06, .3, .8, .3); }
+      [784, 988, 1175, 1568].forEach((f, i) => { tone("triangle", f, f, .9, .12, { at: i * .07, wet: .3 }); tone("sine", f * 2, f * 2, .5, .03, { at: i * .07, wet: .3 }); });
+      if (gold) { tone("sine", 3136, 3136, 1.6, .05, { at: .3, wet: .5 }); noise("highpass", 7000, 10000, .5, 1.1, .07, { at: .25, a: .2, wet: .4 }); }
     },
-    shot() { noise("lowpass", 6000, 400, .7, .32, .9, 0, .25, .002); tone("sine", 150, 45, .25, .8, 0, .1); noise("bandpass", 2400, 900, 2, .08, .4, .01); },
-    boom() { tone("sine", 70, 28, 1.6, .7, 0, .3); noise("lowpass", 900, 80, .7, 1.4, .35, 0, .3, .02); },
+    shot() { noise("highpass", 3000, 5000, .7, .004, 1); noise("lowpass", 2200, 600, .7, .12, .8); tone("sine", 130, 42, .18, .9, { wet: 0 }); noise("bandpass", 900, 500, .8, .55, .2, { at: .01, wet: .55 }); },
+    boom() { tone("sine", 60, 30, 1.2, .6, { wet: .2 }); noise("lowpass", 600, 60, .7, 1, .3, { a: .02 }); },
+    scan() { tone("sine", 1700, 2400, .14, .05, { wet: .1 }); tone("sine", 2400, 2400, .05, .04, { at: .16, wet: .1 }); },
+    thunder(power = 1) {
+      const at = .4 + Math.random() * 1.6;
+      noise("highpass", 1800, 900, .7, .09, .5 * power, { at, wet: .4 });
+      noise("lowpass", 380, 70, .5, 3.8, .55 * power, { at: at + .05, a: .25, wet: .35 });
+      tone("sine", 48, 32, 2.5, .4 * power, { at: at + .05, a: .15, wet: 0 });
+    },
   };
 })();
 
@@ -369,6 +409,7 @@ function drawBg(now) {
   requestAnimationFrame(drawBg);
   const dt = Math.min(.05, (now - last) / 1000); last = now;
   const t = now / 1000;
+  if (GL && GL.hasDecor) { drawVisor(dt, t); drawFx(dt, t); return; }
   g.clearRect(0, 0, W, H);
   if (GL) {                                           // en 3D ce dessin sert de toile de fond : il doit être opaque
     const base = g.createRadialGradient(W * .5, H * .42, 0, W * .5, H * .42, Math.max(W, H) * .75);
@@ -402,6 +443,30 @@ function drawBg(now) {
   }
   g.restore();
   drawFx(dt, t);
+}
+
+/* ================= visière : gouttes sur le verre ================= */
+const vis = document.createElement("canvas"); vis.id = "visor"; vis.className = "layer"; document.body.appendChild(vis);
+const vx = vis.getContext("2d"); let vFlash = 0;
+const drops = Array.from({ length: 70 }, () => newDrop(true));
+function newDrop(init) { return { x: Math.random(), y: init ? Math.random() : -.02, r: 1.5 + Math.random() * 5.5, v: 0, slide: Math.random() < .25, life: init ? Math.random() * 8 : 8 + Math.random() * 6 }; }
+function visorFlash(p) { vFlash = Math.max(vFlash, p); }
+function drawVisor(dt, t) {
+  if (vis.width !== innerWidth || vis.height !== innerHeight) { vis.width = innerWidth; vis.height = innerHeight; }
+  vx.clearRect(0, 0, vis.width, vis.height);
+  vFlash = Math.max(0, vFlash - dt * 2.5);
+  if (document.body.classList.contains("crate")) return;
+  for (let i = 0; i < drops.length; i++) {
+    const d = drops[i]; d.life -= dt;
+    if (d.slide) { d.v = Math.min(160, d.v + dt * 60); d.y += d.v * dt / innerHeight; }
+    if (d.life <= 0 || d.y > 1.05) { drops[i] = newDrop(false); drops[i].y = Math.random() * .9; continue; }
+    const X = d.x * vis.width, Y = d.y * vis.height, a = Math.min(1, d.life) * (.55 + vFlash);
+    if (d.slide && d.v > 20) { vx.strokeStyle = `rgba(190,215,240,${.08 * a})`; vx.lineWidth = d.r * .7; vx.beginPath(); vx.moveTo(X, Y - d.r); vx.lineTo(X, Y - d.r - d.v * .25); vx.stroke(); }
+    const gr = vx.createRadialGradient(X - d.r * .3, Y - d.r * .3, 0, X, Y, d.r);
+    gr.addColorStop(0, `rgba(230,240,255,${.35 * a})`); gr.addColorStop(.6, `rgba(150,170,200,${.08 * a})`); gr.addColorStop(.9, `rgba(10,15,25,${.35 * a})`); gr.addColorStop(1, "rgba(0,0,0,0)");
+    vx.fillStyle = gr; vx.beginPath(); vx.arc(X, Y, d.r, 0, TAU); vx.fill();
+  }
+  if (vFlash > .02) { vx.fillStyle = `rgba(200,220,255,${vFlash * .08})`; vx.fillRect(0, 0, vis.width, vis.height); }
 }
 
 /* ================= effets au premier plan : étincelles, impacts ================= */
@@ -513,7 +578,7 @@ function show(i, dir = 1, opts = {}) {
   ui.rotX = ui.rotY = ui.vX = ui.vY = 0; ui.zoom = 1;
   setInfo(s); markCard();
   const fl = $("#flash"); fl.classList.remove("go"); void fl.offsetWidth; fl.classList.add("go");
-  if (!opts.silent) { SFX.whoosh(); if (s.categorie === "couteau") setTimeout(SFX.shing, 380); }
+  if (!opts.silent) { SFX.whoosh(dir); if (s.categorie === "couteau") setTimeout(SFX.shing, 380); }
   if (s.nom.startsWith("★") || s.rarete === "Contrebande") setTimeout(() => { const r = GL ? { left: 0, top: 0, width: innerWidth, height: innerHeight * .9 } : stage.getBoundingClientRect(); burst(r.left + r.width / 2, r.top + r.height / 2, s.couleur, 60, 420); }, 420);
   timer0 = performance.now(); dwellLeft = DWELL;
 }
@@ -612,7 +677,7 @@ $("#caseBtn").onclick = () => openCase(false);
 $("#sndBtn").onclick = toggleMute;
 $("#closeBtn").onclick = () => { if (LIVE) fetch("action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "fermer" }) }); else toast("Aperçu : ce bouton ferme la vitrine"); };
 document.querySelectorAll(".mid, .big").forEach((b) => b.addEventListener("mouseenter", () => SFX.hover()));
-function toggleMute() { muted = !muted; $("#sndWave").style.display = muted ? "none" : ""; toast(muted ? "Son coupé" : "Son activé"); }
+function toggleMute() { muted = !muted; SFX.setVol(muted ? 0 : sonsVol); $("#sndWave").style.display = muted ? "none" : ""; toast(muted ? "Son coupé" : "Son activé"); }
 setInterval(() => { const d = new Date(); $("#clock").textContent = d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }); }, 1000);
 
 /* ================= ouverture de caisse (intro et à la demande) ================= */
@@ -722,7 +787,7 @@ async function poll() {
   if (!LIVE) return;
   try {
     const j = await (await fetch("etat", { cache: "no-store" })).json();
-    if (typeof j.sons === "number") SFX.setVol(clamp(j.sons / 100, 0, 1));
+    if (typeof j.sons === "number") { sonsVol = clamp(j.sons / 100, 0, 1); if (!muted) SFX.setVol(sonsVol); }
     if (cmdSeq === null) cmdSeq = j.seq;
     else if (j.seq !== cmdSeq) { cmdSeq = j.seq; if (j.cmd) command(j.cmd); }
   } catch (e) {}
@@ -735,9 +800,13 @@ async function start3D() {
   try {
     for (const f of ["three.min.js", "CopyShader.js", "LuminosityHighPassShader.js", "EffectComposer.js", "RenderPass.js", "ShaderPass.js", "UnrealBloomPass.js"])
       if (!(f === "three.min.js" && window.THREE)) await loadScript("web/three/" + f);
+    try { await loadScript("web/vitrine_decor.js"); } catch (e) {}
     await loadScript("web/vitrine3d.js");
     GL = window.Vitrine3D; size();
     GL.init($("#gl"), bg);
+    GL.on("eclair", (p) => { SFX.thunder(p); visorFlash(p); });
+    GL.on("scan", () => SFX.scan());
+    if (GL.hasDecor) document.body.classList.add("nuit");
     document.body.classList.add("gl");
     report("vitrine en 3D (carte graphique)");
   } catch (e) { GL = null; size(); report("3D indisponible, vitrine en 2D : " + (e && e.message || e)); }
@@ -753,7 +822,7 @@ async function whenVisible() {
   } catch (e) { SKINS = []; }
   $("#srcPrix").textContent = META.source_prix || "";
   if (LIVE) { try { const e = await (await fetch("etat", { cache: "no-store" })).json(); cmdSeq = e.seq; if (typeof e.sons === "number") sonsVol = clamp(e.sons / 100, 0, 1); } catch (e) {} }
-  SFX.init();
+  SFX.init(); SFX.setVol(sonsVol);
   await start3D();
   buildTabs(); VIEW = filtered(); buildCards();
   requestAnimationFrame(drawBg); requestAnimationFrame(loop);
