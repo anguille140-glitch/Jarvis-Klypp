@@ -47,9 +47,13 @@ et donne les actions à faire (fichiers à lancer) clairement.
   Décor `web/vitrine_decor.js` : village italien de nuit sous la pluie (création originale, pas d'assets Valve) —
   pavés mouillés, façades/volets/lierre/mousse, toits, lanternes, guirlandes, arche, clocher + horloge holo, néons,
   panneau défilant, drone, socle holo + anneaux + scan, pluie (shader), éclaboussures, éclairs (événement « eclair »
-  → tonnerre dans la page). Sons : moteur SFX à attaques nettes + ambiance pluie ; visière avec gouttes (canvas).
+  → tonnerre dans la page), + terrasse de café, stores rayés, linge, cyprès/oliviers, caisses, réverbères, cheminées/
+  antennes/paraboles, collines lointaines, brume, vapeur d'égout, caniveau, projecteurs, vaisseau (« vaisseau » → son
+  `SFX.flyby`), panneaux holo, flux de données (bloc EXTRAS, `extraUpd`). Sons : moteur SFX à attaques nettes + ambiance pluie ; visière avec gouttes (canvas).
   Épaisseur des skins = distance au bord (couteaux en biseau jusqu'au fil, armes à feu flancs plats). Rotation
-  limitée (±50° / ±25°) : une image plate vue de profil est laide. Peinture satinée (peu de métal) pour garder les couleurs. Scripts `web/` chargés avec `?v=VER`
+  libre à la souris (avec inertie, Klypp la veut libre) ; bords assombris (couleurs par sommet) pour cacher le profil.
+  Intro : précharge toutes les images (compteur « n/54 », 25 s max), roulette avec images chargées seulement, 3D du
+  skin calculée seulement après la caisse. Peinture satinée (peu de métal) pour garder les couleurs. Scripts `web/` chargés avec `?v=VER`
   (constante dans `vitrine_cs.html`) : l'incrémenter à chaque modif de `web/` (sinon Chrome garde l'ancien fichier).
 - `session_jeu.py` — « lance-moi une session CS » : FACEIT AC (élévation UAC, ou tâche planifiée sans confirmation) puis
   CS2 via `steam://rungameid/730`, annonces vocales à chaque étape (outil `session_jeu` + voie express).

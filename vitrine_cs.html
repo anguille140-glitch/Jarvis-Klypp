@@ -383,6 +383,12 @@ const SFX = (() => {
     shot() { noise("highpass", 3000, 5000, .7, .004, 1); noise("lowpass", 2200, 600, .7, .12, .8); tone("sine", 130, 42, .18, .9, { wet: 0 }); noise("bandpass", 900, 500, .8, .55, .2, { at: .01, wet: .55 }); },
     boom() { tone("sine", 60, 30, 1.2, .6, { wet: .2 }); noise("lowpass", 600, 60, .7, 1, .3, { a: .02 }); },
     scan() { tone("sine", 1700, 2400, .14, .05, { wet: .1 }); tone("sine", 2400, 2400, .05, .04, { at: .16, wet: .1 }); },
+    flyby() {                                              // vaisseau qui traverse le ciel de gauche à droite (7 s)
+      noise("bandpass", 260, 900, 1.2, 3.4, .16, { a: 2.2, pan: -.9, panTo: .1, wet: .25 });
+      noise("bandpass", 900, 220, 1.2, 3.6, .16, { at: 3.3, a: .2, pan: .1, panTo: .9, wet: .25 });
+      tone("sawtooth", 62, 74, 3.4, .05, { a: 2.2, lp: 300, pan: -.9, panTo: .1, wet: .1 });
+      tone("sawtooth", 74, 55, 3.6, .05, { at: 3.3, a: .2, lp: 300, pan: .1, panTo: .9, wet: .1 });
+    },
     thunder(power = 1) {
       const at = .4 + Math.random() * 1.6;
       noise("highpass", 1800, 900, .7, .09, .5 * power, { at, wet: .4 });
@@ -598,7 +604,7 @@ function inspect(on) {
 // animation continue de l'objet : flottement, rotation à la main avec inertie, reflet qui passe
 function loop(now) {
   requestAnimationFrame(loop);
-  if (!paused && !document.body.classList.contains("crate")) {
+  if (cur && !paused && !document.body.classList.contains("crate")) {
     const el = now - timer0; dwellLeft = DWELL - el;
     $("#timerBar").style.width = `${clamp(el / DWELL, 0, 1) * 100}%`;
     if (el >= DWELL && !ui.drag && !glDrag) next();
@@ -692,6 +698,27 @@ function pickWinner(intro) {
   const pool = r < .18 ? stars : SKINS.filter((s) => !s.nom.startsWith("★"));
   return (pool.length ? pool : SKINS)[Math.random() * (pool.length || SKINS.length) | 0];
 }
+/* Précharge toutes les images (6 à la fois). s._ok = image prête. Rend la main au bout de `limite` ms quoi qu'il arrive. */
+function preloadAll(progress, stop, limite) {
+  const todo = SKINS.filter((s) => !s._ok && !s._fail), tot = SKINS.length;
+  let n = tot - todo.length, idx = 0;
+  progress(n, tot);
+  return new Promise((resolve) => {
+    let active = 0, over = false;
+    const end = () => { if (!over) { over = true; resolve(); } };
+    const t = setTimeout(end, limite), chk = setInterval(() => { if (stop()) end(); }, 200);
+    const pump = () => {                                  // continue en fond même si on a rendu la main
+      if (idx >= todo.length && active === 0) { clearTimeout(t); clearInterval(chk); return end(); }
+      while (active < 6 && idx < todo.length) {
+        const s = todo[idx++], im = new Image(); active++;
+        im.onload = () => { s._ok = im.naturalWidth > 0; if (!s._ok) s._fail = true; active--; progress(++n, tot); pump(); };
+        im.onerror = () => { s._fail = true; active--; progress(++n, tot); pump(); };
+        im.src = img(s);
+      }
+    };
+    pump();
+  });
+}
 function wait(ms) { return new Promise((r) => { const h = setTimeout(r, ms); crateSkip && crateSkip.timers.push(h); }); }
 async function openCase(intro) {
   if (!SKINS.length || document.body.classList.contains("crate")) return;
@@ -700,7 +727,7 @@ async function openCase(intro) {
   document.body.classList.add("crate"); crate.hidden = false; crate.classList.remove("out");
   if (GL) GL.paused = true;                           // la 3D se repose pendant l'ouverture de caisse
   box.className = ""; reel.classList.remove("on"); rev.classList.remove("on"); strip.style.transform = "translateX(0)"; strip.innerHTML = "";
-  const win = pickWinner(intro);
+  let win = pickWinner(intro);
   let done = false;
   crateSkip = { timers: [], finish: null };
   const finish = () => {
@@ -716,16 +743,27 @@ async function openCase(intro) {
   crate.onclick = skipCrate;
   // 1. démarrage façon terminal
   if (intro) {
-    const lines = ["> CONNEXION À L'ARMURERIE ........ <b>OK</b>", "> INVENTAIRE ....................... <b>" + SKINS.length + " OBJETS</b>", "> CLÉ DE CAISSE ..................... <b>INSÉRÉE</b>"];
     const bt = $("#bootTxt"); bt.innerHTML = ""; SFX.boom();
-    for (const l of lines) { bt.innerHTML += l + "\n"; SFX.tick(); await wait(420); if (done) return; }
+    bt.innerHTML += "> CONNEXION À L'ARMURERIE ........ <b>OK</b>\n"; SFX.tick(); await wait(420); if (done) return;
+    // les images doivent être là AVANT la roulette (au 1er lancement elles se téléchargent depuis Steam)
+    const line = document.createElement("span"); bt.appendChild(line);
+    const t0 = performance.now();
+    await preloadAll((n, tot) => { line.innerHTML = "> TÉLÉCHARGEMENT DES SKINS ......... <b>" + n + "/" + tot + "</b>\n"; },
+                     () => done, 25000);
+    if (done) return;
+    const ok = SKINS.filter((s) => s._ok).length;
+    line.innerHTML = "> INVENTAIRE ....................... <b>" + ok + " OBJETS</b>\n"; SFX.tick();
+    if (performance.now() - t0 < 300) await wait(300); if (done) return;
+    bt.innerHTML += "> CLÉ DE CAISSE ..................... <b>INSÉRÉE</b>\n"; SFX.tick(); await wait(420); if (done) return;
   } else $("#bootTxt").innerHTML = "> CAISSE DE L'ARMURERIE";
   // 2. la caisse arrive puis s'ouvre
   box.classList.add("in"); SFX.whoosh(); await wait(1000); if (done) return;
   SFX.unlock(); box.classList.add("open"); await wait(650); if (done) return;
   // 3. la roulette
   const N = 64, WIN_AT = 56, CW = 206;
-  const stars = SKINS.filter((s) => s.nom.startsWith("★")), guns = SKINS.filter((s) => !s.nom.startsWith("★"));
+  const loaded = SKINS.filter((s) => s._ok), POOL = loaded.length >= 6 ? loaded : SKINS;   // jamais de carte vide
+  if (!POOL.includes(win)) { const w2 = POOL.filter((s) => s.nom.startsWith("★") === win.nom.startsWith("★")); win = (w2.length ? w2 : POOL)[Math.random() * (w2.length || POOL.length) | 0]; }
+  const stars = POOL.filter((s) => s.nom.startsWith("★")), guns = POOL.filter((s) => !s.nom.startsWith("★"));
   const filler = () => { const pool = Math.random() < .045 && stars.length ? stars : (guns.length ? guns : SKINS); return pool[Math.random() * pool.length | 0]; };
   const items = Array.from({ length: N }, (_, i) => i === WIN_AT ? win : filler());   // comme dans CS : les ★ sont rares
   strip.innerHTML = items.map((s, i) => { const star = s.nom.startsWith("★"); return `<div class="rc${star ? " star" : ""}" style="--c:${s.couleur}">
@@ -797,7 +835,7 @@ async function poll() {
 }
 
 /* ================= démarrage ================= */
-const VER = "2026-10-10d";
+const VER = "2026-10-10f";
 function loadScript(src) { if (src.startsWith("web/")) src += "?v=" + VER; return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = rej; document.head.appendChild(el); }); }
 async function start3D() {
   if (/[?&]2d\b/.test(location.search)) return;               // ?2d : ancienne vitrine
@@ -810,6 +848,7 @@ async function start3D() {
     GL.init($("#gl"), bg);
     GL.on("eclair", (p) => { SFX.thunder(p); visorFlash(p); });
     GL.on("scan", () => SFX.scan());
+    GL.on("vaisseau", () => SFX.flyby());
     if (GL.hasDecor) document.body.classList.add("nuit");
     document.body.classList.add("gl");
     report("vitrine en 3D (carte graphique)");
@@ -832,7 +871,7 @@ async function whenVisible() {
   requestAnimationFrame(drawBg); requestAnimationFrame(loop);
   setInterval(poll, 400);
   if (!SKINS.length) { toast("Aucun skin chargé"); return; }
-  show(0, 1, { silent: true });
+  // pas de show(0) ici : la 3D lourde (analyse de l'image) attend la fin de la caisse → intro fluide
   await whenVisible();
   report("vitrine ouverte, intro lancée");
   openCase(true);
