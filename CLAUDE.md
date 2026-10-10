@@ -37,6 +37,13 @@ et donne les actions à faire (fichiers à lancer) clairement.
   `/zone`, cache `.cache/zone_*.json`), soleil et météo réels, modes holo / thermique / rayons X, scan, survol, drones,
   satellite, cible + profil. Remplace la carte plate à la fin du globe ; plein écran via le bouton « Holo » ou la voix
   (outil `holo_table`, canal `state["holo"]`). Test sans internet : données factices + Chromium swiftshader.
+  Carte : tuiles z13 sur toute la table (texture 4096) + carte détaillée z15 sur ±3,5 km (2e texture 4096), tuiles
+  converties en 512 px (`holoTile(im, 512, dim)`, routes de la carte atténuées). Routes vectorielles : `/routes`
+  (Overpass, cache `.cache/routes_*.json`) → rubans posés sur les triangles du relief (`heightTri`), largeur mini en
+  pixels, circulation animée, sentiers en pointillés (bouton/touche G, « affiche les routes »). Champ de vision
+  (`computeViewshed`, 1 440 rayons, courbure de la Terre) : vert = visible, sombre = caché ; bouton/touche C, voix
+  « champ de vision (depuis <lieu>) ». Ouverture à la voix tolérante (`HOLO_OPEN_RE` : halo/allô table, carte 3D,
+  relief, hologramme, projection, mode Tony Stark, « montre-moi la vallée en 3D »...).
 - `vitrine_cs.py` + `vitrine_cs.html` + `skins_cs.json` — VITRINE CS2 (« lance mon fond d'écran ») : intro ouverture de
   caisse, skins chers qui défilent (inspection 3D souris, zoom, caisses, favoris, tirs dans le décor, bruitages WebAudio),
   pilotable à la voix (outil `fond_ecran`, `VITRINE_RE` / `VITRINE_CMDS`, `find_skin`). Images Steam téléchargées une

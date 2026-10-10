@@ -898,9 +898,11 @@ TOOLS = [{"functionDeclarations": [
         "bâtiments, sommets, rivières, remontées, météo et soleil réels. ouvrir / fermer ; mode (valeur : holo, "
         "thermique, rayons_x) ; scan (scan LIDAR) ; survol (vol cinématique au-dessus des sommets) ; cible (valeur : "
         "nom d'un sommet / lieu, ou « maison ») ; drones ; satellite ; nuages ; meteo ; soleil (valeur : heure, ex. 18, "
-        "ou « maintenant ») ; recentrer. Effet immédiat à l'écran.",
+        "ou « maintenant ») ; recentrer ; champ_vision (ce qu'on voit depuis la maison, valeur : un lieu pour voir depuis "
+        "ce lieu, « off » pour masquer) ; routes (valeur : affiche / cache). Effet immédiat à l'écran. Toute demande de "
+        "« carte 3D », « relief », « hologramme », « projection », « mode Tony Stark » = ouvrir.",
         {"action": _p("action", enum=["ouvrir", "fermer", "mode", "scan", "survol", "cible", "drones", "satellite",
-                                      "nuages", "meteo", "soleil", "recentrer"]),
+                                      "nuages", "meteo", "soleil", "recentrer", "champ_vision", "routes"]),
          "valeur": _p("détail (mode, lieu ou heure)")}, ["action"]),
     _fn("session_jeu", "Lance une SESSION DE JEU complète. cs2 : « lance-moi une session CS », « lance CS2 », "
         "« on se fait une game » -> FACEIT AC d'abord (anti-triche), attend qu'il tourne, puis Counter-Strike 2 par "
@@ -1366,7 +1368,13 @@ class Actions:
     # --- holo-table 3D
     def do_holo_table(self, action: str, valeur: str = "") -> str:
         import plan_de_travail
-        out = plan_de_travail.workspace().holo(action, str(valeur or ""))
+        valeur = str(valeur or "").strip()
+        if action == "champ_vision":                       # la holo-table comprend « champ de vision depuis … »
+            action, valeur = "champ de vision", ("off" if valeur.lower() in ("off", "non", "cacher", "masquer")
+                                                 else f"depuis {valeur}" if valeur else "")
+        elif action == "routes":
+            action, valeur = ("cache" if valeur.lower().startswith(("cache", "masque", "non")) else "affiche"), "les routes"
+        out = plan_de_travail.workspace().holo(action, valeur)
         return out if out.startswith("ÉCHEC") else f"OK : holo-table, {action} {valeur}".strip()
 
     # --- session de jeu : FACEIT AC puis CS2
@@ -1606,14 +1614,32 @@ ORB_SCREEN = re.compile(r"\b(?:(autre|deuxieme|second|seconde|premier|1er|2e) ec
                         r"de droite|gauche|droite|deuxieme|second|deux|2|premier|un|1|du milieu))\b")
 
 
-HOLO_OPEN_RE = re.compile(r"^(?:tu peux |peux tu |vas y )?(ouvre|ouvres|ouvrir|affiche|afficher|montre|montre moi|lance|"
-                          r"active|deploie|ferme|fermer|cache|quitte|enleve)(?: moi)?(?: la| le| ta| ma| l)? ?"
-                          r"(holo ?table|holotable|table holographique|carte (?:holographique|3d|en 3d|holo)|atlas|hologramme|"
-                          r"relief(?: 3d| en 3d)?)\b")
+# Ouvrir / fermer la holo-table : beaucoup de façons de le dire, et les erreurs d'écoute fréquentes de Vosk
+# (« holo » entendu « halo », « allô », « au lot », « l'eau »...).
+HOLO_VERBS = (r"ouvre|ouvres|ouvrir|affiche|affiches|afficher|montre|montres|montrer|lance|lances|lancer|active|activer|"
+              r"deploie|deployer|projette|projeter|allume|allumer|sors|sortir|mets|met|demarre|demarrer|"
+              r"fais apparaitre|fait apparaitre|fais voir|je veux voir|on peut voir|envoie|"
+              r"ferme|fermer|fermes|cache|cacher|quitte|quitter|enleve|eteins|eteindre|range|ranger|coupe")
+HOLO_NOUNS = (r"(?:h?olo|halo|allo|alo|aulo|au lo|aux? lots?|o l o|l eau|hublot|hollow|holos?|olos?) ?tables?|"
+              r"tables? (?:holo\w*|halo|allo|3d|en 3d|tactique|de commandement|de projection)|"
+              r"hologrammes?(?: 3d)?|projection(?: holographique| 3d| du secteur| de la vallee)?|"
+              r"cartes? (?:holographique|holo|3d|en 3d|en relief|du relief|tactique|de la vallee|des montagnes)|"
+              r"relief(?: 3d| en 3d)?|terrain(?: 3d| en 3d)?|maquette(?: 3d)?|atlas|"
+              r"(?:vallee|montagnes?|secteur|environs|alentours|region|quartier|maison) en (?:3d|relief|hologramme)|"
+              r"vue (?:tactique|3d|holographique|du secteur)|mode (?:tony stark|iron man|stark)|secteur")
+HOLO_OPEN_RE = re.compile(r"(?:^|\b)(" + HOLO_VERBS + r")(?: moi| nous)?(?: \w+){0,2}? ?(" + HOLO_NOUNS + r")\b")
+HOLO_ALONE_RE = re.compile(r"^(?:la |le |une )?(?:(?:h?olo|halo|allo|aux? lots?) ?table|table holographique|hologramme|"
+                           r"projection holographique|mode (?:tony stark|iron man)|holo)$")
+HOLO_CLOSE = ("ferme", "fermer", "fermes", "cache", "cacher", "quitte", "quitter", "enleve", "eteins", "eteindre",
+              "range", "ranger", "coupe")
 HOLO_CMD_RE = re.compile(r"^(?:passe en |active |mets |mode |vision )*(?:mode |vision )?(thermique|rayons? x|holo(?:graphique)?)$|"
                          r"^(scanne?|lance un scan|scan lidar|fais un scan)(?: la zone| le secteur| les environs)?$|"
                          r"^(survol|fais un survol|lance le survol|survole la zone)$|"
-                         r"^(?:cible|cibler|vise|localise|zoome? sur)(?: le| la| les| l)? (.+)$")
+                         r"^(?:cible|cibler|vise|localise|zoome? sur)(?: le| la| les| l)? (.+)$|"
+                         r"^(?:montre|affiche|calcule|lance|active|fais|cache|enleve|masque|coupe|desactive)?(?: moi)?"
+                         r"(?: le| la| les| mon)? ?(champs? de (?:vision|vue)|visibilite|ce que (?:je|on) vois?|angles? morts?)"
+                         r"(?: depuis (?:le |la |les |l )?(.+))?$|"
+                         r"^(?:montre|affiche|cache|masque|enleve)(?: moi)?(?: les)? (routes|chemins|sentiers)$")
 CS_WORDS = r"(?:cs ?2?|c s ?2?|counter(?: strike)?(?: 2)?|conteur strike|cesse? deux|faceit|face it|fesse it)"
 SESSION_CS_RE = re.compile(r"\b(?:session|partie|game|games|match|ranked)\b.*\b" + CS_WORDS + r"\b|"
                            r"^(?:tu peux |peux tu |vas y )?(?:lance|lances|lancer|demarre|demarrer|ouvre|ouvrir|mets|met)"
@@ -1864,9 +1890,9 @@ class Brain:
             log.info("Voie express : arrêt d'urgence (%d programme(s) coupé(s))", n)
             self.voice.say("Arrêt d'urgence. Tout est arrêté.")
             return True
-        hm = HOLO_OPEN_RE.match(text)
+        hm = HOLO_OPEN_RE.search(text) or HOLO_ALONE_RE.match(text)
         if hm:                                             # « Jarvis, affiche la holo-table »
-            close = hm.group(1) in ("ferme", "fermer", "cache", "quitte", "enleve")
+            close = bool(hm.groups()) and hm.group(1) in HOLO_CLOSE
             out = self.actions.do_holo_table("fermer" if close else "ouvrir")
             log.info("Voie express (holo-table) : %s -> %s", heard, out)
             self.voice.say("Holo-table fermée." if close else random.choice(
@@ -1874,7 +1900,7 @@ class Brain:
                 if out.startswith("OK") else "Je n'arrive pas à ouvrir la holo-table.")
             return True
         hc = HOLO_CMD_RE.match(text)
-        if hc and self._holo_open():
+        if hc and (self._holo_open() or hc.group(5)):   # « champ de vision » ouvre la holo-table au besoin
             if hc.group(1):
                 v = hc.group(1)
                 out = self.actions.do_holo_table("mode", "rayons_x" if v.startswith("rayon") else
@@ -1883,8 +1909,13 @@ class Brain:
                 out = self.actions.do_holo_table("scan")
             elif hc.group(3):
                 out = self.actions.do_holo_table("survol")
-            else:
+            elif hc.group(4):
                 out = self.actions.do_holo_table("cible", hc.group(4))
+            elif hc.group(5):
+                off = text.split()[0] in ("cache", "enleve", "masque", "coupe", "desactive")
+                out = self.actions.do_holo_table("champ_vision", "off" if off else (hc.group(6) or ""))
+            else:
+                out = self.actions.do_holo_table("routes", "cache" if text.split()[0] in ("cache", "masque", "enleve") else "affiche")
             log.info("Voie express (holo-table) : %s -> %s", heard, out)
             self.voice.say(random.choice(["Bien, monsieur.", "C'est parti.", "En cours."]))
             return True

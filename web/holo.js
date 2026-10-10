@@ -16,7 +16,9 @@ const EXT = 16.5;                 // demi-côté de la zone de relief (km)
 const NS = 400;                   // mailles du relief
 const EXAG = 1.3;                 // relief un peu accentué (plus lisible)
 const EXAG_B = 4;                 // bâtiments très accentués (sinon invisibles à cette échelle)
-const DEM_Z = 11, MAP_Z = 12;
+const DEM_Z = 11, MAP_Z = 13;
+const DET_Z = 15, DET_E = 3.5;
+const VS_N = 256;                 // grille du champ de vision (125 m)    // carte détaillée (rues, maisons) autour du domicile : ±3,5 km
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 const ease = (t) => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
@@ -85,22 +87,28 @@ function slopeDeg(x, n) {
   return Math.atan(Math.hypot(gx, gn)) / D2R;
 }
 
-async function buildTexture(tileFn) {
-  const SIZE = 3072, z = MAP_Z, cv = document.createElement("canvas"); cv.width = cv.height = SIZE;
+// Carte holographique drapée sur le relief. ext : demi-côté (km). Les tuiles sont converties en 512 px (contours fins).
+async function buildTexture(tileFn, z, SIZE, ext) {
+  const cv = document.createElement("canvas"); cv.width = cv.height = SIZE;
   const c = cv.getContext("2d");
-  c.fillStyle = "rgb(2,12,26)"; c.fillRect(0, 0, SIZE, SIZE);
-  const latN = H.lat0 + EXT / H.KN, latS = H.lat0 - EXT / H.KN, lonW = H.lon0 - EXT / H.KX, lonE = H.lon0 + EXT / H.KX;
+  c.fillStyle = "rgb(2,12,26)"; c.fillRect(0, 0, SIZE, SIZE); c.imageSmoothingQuality = "high";
+  const latN = H.lat0 + ext / H.KN, latS = H.lat0 - ext / H.KN, lonW = H.lon0 - ext / H.KX, lonE = H.lon0 + ext / H.KX;
   const tx0 = Math.floor(mx(lonW, z) / 256), tx1 = Math.floor(mx(lonE, z) / 256), ty0 = Math.floor(my(latN, z) / 256), ty1 = Math.floor(my(latS, z) / 256);
-  const px = (x) => (x + EXT) / (2 * EXT) * SIZE, py = (n) => (EXT - n) / (2 * EXT) * SIZE;
-  const jobs = [];
-  for (let tx = tx0; tx <= tx1; tx++) for (let ty = ty0; ty <= ty1; ty++) {
-    jobs.push(tileFn(z, tx, ty).then((img) => {
-      if (!img) return;
-      const [x0, n0] = toXN(tileLat(ty, z), tileLon(tx, z)), [x1, n1] = toXN(tileLat(ty + 1, z), tileLon(tx + 1, z));
-      c.drawImage(img, px(x0), py(n0), px(x1) - px(x0) + .6, py(n1) - py(n0) + .6);
-    }));
-  }
-  await Promise.all(jobs);
+  const px = (x) => (x + ext) / (2 * ext) * SIZE, py = (n) => (ext - n) / (2 * ext) * SIZE;
+  const list = [];
+  for (let tx = tx0; tx <= tx1; tx++) for (let ty = ty0; ty <= ty1; ty++) list.push([tx, ty]);
+  let i = 0;
+  const worker = async () => {                       // 6 à la fois, en laissant respirer l'animation entre deux tuiles
+    while (i < list.length) {
+      const [tx, ty] = list[i++], img = await tileFn(z, tx, ty, { size: 512, dim: 1 });
+      if (img) {
+        const [x0, n0] = toXN(tileLat(ty, z), tileLon(tx, z)), [x1, n1] = toXN(tileLat(ty + 1, z), tileLon(tx + 1, z));
+        c.drawImage(img, px(x0), py(n0), px(x1) - px(x0) + .6, py(n1) - py(n0) + .6);
+      }
+      await new Promise((r) => setTimeout(r, 0));
+    }
+  };
+  await Promise.all(Array.from({ length: 6 }, worker));
   return cv;
 }
 
@@ -118,16 +126,22 @@ function sunPos(date, lat, lon) {          // azimut / hauteur (degrés), formul
 }
 
 /* ---------- scène ---------- */
-function buildScene(texCanvas, zone) {
+function buildScene(texCanvas, zone, texDCanvas) {
   const T = THREE, U = {
     uTime: { value: 0 }, uTex: { value: null }, uReveal: { value: 0 }, uScanR: { value: -1 }, uScanC: { value: new T.Vector2() },
     uTarget: { value: new T.Vector2(999, 999) }, uSun: { value: new T.Vector3(0, 1, 0) }, uSunI: { value: 1 }, uNight: { value: 0 },
     uBaseT: { value: 10 }, uHRef: { value: H.hRef }, uHMin: { value: H.hMin }, uExag: { value: EXAG }, uThermMix: { value: 0 },
     uXMix: { value: 0 }, uRise: { value: 0 }, uSnow: { value: 2300 },
+    uTexD: { value: null }, uDetE: { value: DET_E }, uDetOn: { value: texDCanvas ? 1 : 0 }, uPx: { value: .001 },
+    uVS: { value: null }, uVSOn: { value: 0 }, uVSR: { value: 0 }, uVSC: { value: new T.Vector2() },
   };
   H.U = U;
   const tex = new T.CanvasTexture(texCanvas);
-  tex.anisotropy = 8; tex.minFilter = T.LinearMipmapLinearFilter; U.uTex.value = tex;
+  tex.anisotropy = 16; tex.minFilter = T.LinearMipmapLinearFilter; U.uTex.value = tex;
+  const texD = new T.CanvasTexture(texDCanvas || document.createElement("canvas"));
+  texD.anisotropy = 16; texD.minFilter = T.LinearMipmapLinearFilter; U.uTexD.value = texD;
+  const vsT = new T.DataTexture(new Uint8Array(VS_N * VS_N), VS_N, VS_N, T.LuminanceFormat);
+  vsT.magFilter = vsT.minFilter = T.LinearFilter; U.uVS.value = vsT; H.vsTex = vsT;
   const scene = new T.Scene(); H.scene = scene;
 
   /* relief */
@@ -147,8 +161,8 @@ function buildScene(texCanvas, zone) {
   const terrainMat = new T.ShaderMaterial({ uniforms: U, transparent: true, extensions: { derivatives: true },
     vertexShader: `attribute float aH; attribute float aSlope; varying vec3 vW; varying vec2 vUv; varying float vH; varying float vS;
       void main(){ vUv=uv; vH=aH; vS=aSlope; vec4 w=modelMatrix*vec4(position,1.); vW=w.xyz; gl_Position=projectionMatrix*viewMatrix*w; }`,
-    fragmentShader: `uniform sampler2D uTex; uniform float uTime,uReveal,uScanR,uSunI,uNight,uBaseT,uHRef,uHMin,uThermMix,uXMix,uSnow;
-      uniform vec2 uScanC,uTarget; uniform vec3 uSun; varying vec3 vW; varying vec2 vUv; varying float vH; varying float vS;
+    fragmentShader: `uniform sampler2D uTex,uTexD,uVS; uniform float uTime,uReveal,uScanR,uSunI,uNight,uBaseT,uHRef,uHMin,uThermMix,uXMix,uSnow,uDetE,uDetOn,uVSOn,uVSR;
+      uniform vec2 uScanC,uTarget,uVSC; uniform vec3 uSun; varying vec3 vW; varying vec2 vUv; varying float vH; varying float vS;
       float iso(float v,float w){ float f=abs(fract(v-.5)-.5)/max(fwidth(v),1e-4); return 1.-min(f/w,1.); }
       vec3 ramp(float t){ t=clamp(t,0.,1.); vec3 a=vec3(.10,.02,.30),b=vec3(.10,.25,.95),c=vec3(.05,.85,.85),d=vec3(1.,.88,.22),e=vec3(1.,.22,.12);
         if(t<.25)return mix(a,b,t/.25); if(t<.5)return mix(b,c,(t-.25)/.25); if(t<.75)return mix(c,d,(t-.5)/.25); return mix(d,e,(t-.75)/.25); }
@@ -160,6 +174,8 @@ function buildScene(texCanvas, zone) {
         float shade=.1+.9*pow(lam,1.2)*uSunI+.08*N.y;
         float rim=pow(1.-max(dot(N,normalize(cameraPosition-vW)),0.),3.);
         vec3 map=texture2D(uTex,vUv).rgb;
+        vec2 dq=vec2(vW.x,-vW.z)/uDetE; float dw=uDetOn*(1.-smoothstep(.82,1.,max(abs(dq.x),abs(dq.y))));
+        if(dw>0.) map=mix(map,texture2D(uTexD,dq*.5+.5).rgb,dw);
         float minor=iso(vH/50.,1.), major=iso(vH/250.,1.5);
         vec2 gf=abs(fract(vW.xz-.5)-.5)/fwidth(vW.xz); float grid=1.-min(min(gf.x,gf.y),1.);
         float snow=smoothstep(uSnow-250.,uSnow+250.,vH)*(1.-smoothstep(38.,52.,vS));
@@ -173,6 +189,16 @@ function buildScene(texCanvas, zone) {
         vec3 xr=vec3(.02,.08,.14)*shade+cy*(minor*.55+major*1.3)+cy*grid*.18;
         vec3 col=mix(holo,th,uThermMix); col=mix(col,xr,uXMix);
         float alpha=mix(.96,.42,uXMix);
+        if(uVSOn>0.){                                   // champ de vision : vert = visible, rouge sombre = caché
+          vec2 vq=vW.xz/${(2 * R_TABLE).toFixed(1)}+.5; float vis=texture2D(uVS,vec2(vq.x,1.-vq.y)).r;
+          float dO=length(vW.xz-uVSC), on=uVSOn*smoothstep(uVSR,uVSR-.6,dO);
+          float hatch=step(.5,fract((vW.x+vW.z)*7.));
+          vec3 seen=col*.75+vec3(.15,1.,.55)*(.22+.1*hatch);
+          vec3 hid=col*vec3(.55,.45,.52)+vec3(.5,.04,.1)*.16;
+          float edgeV=1.-smoothstep(0.,fwidth(vis)*1.5+1e-4,abs(vis-.5));
+          col=mix(col,mix(hid,seen,smoothstep(.35,.65,vis))+vec3(.5,1.,.7)*edgeV*.9,on);
+          col+=vec3(.4,1.,.7)*exp(-pow((dO-uVSR)*3.,2.))*uVSOn*step(uVSR,${(R_TABLE + 1).toFixed(1)})*.9;
+        }
         if(uScanR>0.){ float d=length(vW.xz-uScanC); float band=exp(-pow((d-uScanR)*4.,2.));
           float trail=smoothstep(uScanR-3.,uScanR,d)*step(d,uScanR); float fade=1.-smoothstep(12.,18.,uScanR);
           col+=vec3(.35,1.,.85)*(band*1.5+trail*.2*(minor+major))*fade; }
@@ -403,6 +429,135 @@ function buildDyn() {                      // cabines qui montent et descendent 
   H.dynPts.renderOrder = 4; H.scene.add(H.dynPts);
 }
 
+/* ---------- routes : rubans lumineux posés exactement sur le relief ---------- */
+function heightTri(x, n) {             // altitude sur les triangles du maillage (même découpe que l'affichage)
+  const N1 = NS + 1, fi = clamp((x + EXT) / (2 * EXT) * NS, 0, NS - 1e-4), fj = clamp((n + EXT) / (2 * EXT) * NS, 0, NS - 1e-4);
+  const i = Math.floor(fi), j = Math.floor(fj), u = fi - i, v = fj - j, G = H.HG;
+  const a = G[j * N1 + i], b = G[j * N1 + i + 1], c = G[(j + 1) * N1 + i], d = G[(j + 1) * N1 + i + 1];
+  return u + v <= 1 ? a + u * (b - a) + v * (c - a) : d + (1 - u) * (c - d) + (1 - v) * (b - d);
+}
+// largeur réelle (km) et largeur minimale à l'écran (px) par type : autoroute, nationale, départementale, locale, rue, chemin, sentier
+const ROAD_W = [.032, .024, .019, .014, .009, .006, .004], ROAD_PX = [2.6, 2.2, 1.9, 1.6, 1.2, 1.1, 1];
+function buildRoads(list) {
+  const T = THREE;
+  if (H.roads) { H.scene.remove(H.roads); H.roads.geometry.dispose(); }
+  const P = [], NRM = [], SIDE = [], DIST = [], KIND = [], idx = [];
+  let km = 0, id = 0;
+  for (const [kind, , tunnel, g] of list) {
+    const pts = g.map(([la, lo]) => toXN(la, lo));
+    // découpe en morceaux à l'intérieur de la table, puis ré-échantillonnage tous les ~20 m (suit le relief)
+    let run = [];
+    const flush = () => {
+      if (run.length >= 2) {
+        const res = [];
+        for (let i = 0; i < run.length - 1; i++) {
+          const [x0, n0] = run[i], [x1, n1] = run[i + 1], L = Math.hypot(x1 - x0, n1 - n0), k = Math.max(1, Math.ceil(L / .02));
+          for (let q = 0; q < k; q++) res.push([lerp(x0, x1, q / k), lerp(n0, n1, q / k)]);
+        }
+        res.push(run[run.length - 1]);
+        let dist = 0; const seed = (id++ * 0.618) % 1 * 50;
+        for (let i = 0; i < res.length; i++) {
+          const [x, n] = res[i], a = res[Math.max(0, i - 1)], b = res[Math.min(res.length - 1, i + 1)];
+          let tx = b[0] - a[0], tn = b[1] - a[1]; const tl = Math.hypot(tx, tn) || 1; tx /= tl; tn /= tl;
+          if (i) dist += Math.hypot(x - res[i - 1][0], n - res[i - 1][1]);
+          const y = yOf(heightTri(x, n)) + .0025, k0 = P.length / 3;
+          for (const sd of [-1, 1]) { P.push(x, y, -n); NRM.push(-tn, -tx); SIDE.push(sd); DIST.push(dist + seed); KIND.push(kind + (tunnel ? 10 : 0)); }
+          if (i) idx.push(k0 - 2, k0 - 1, k0, k0 - 1, k0 + 1, k0);
+        }
+        km += dist;
+      }
+      run = [];
+    };
+    for (const pt of pts) { if (inTable(pt[0], pt[1], .25)) run.push(pt); else flush(); }
+    flush();
+  }
+  H.roadKm = km;
+  if (!P.length) return;
+  const geo = new T.BufferGeometry();
+  geo.setAttribute("position", new T.Float32BufferAttribute(P, 3)); geo.setAttribute("aN", new T.Float32BufferAttribute(NRM, 2));
+  geo.setAttribute("aSide", new T.Float32BufferAttribute(SIDE, 1)); geo.setAttribute("aDist", new T.Float32BufferAttribute(DIST, 1));
+  geo.setAttribute("aKind", new T.Float32BufferAttribute(KIND, 1)); geo.setIndex(idx);
+  const m = new T.ShaderMaterial({ uniforms: H.U, transparent: true, depthWrite: false, extensions: { derivatives: true },
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4, side: T.DoubleSide,
+    vertexShader: `attribute vec2 aN; attribute float aSide, aDist, aKind; uniform float uPx;
+      varying float vSide, vDist, vKind, vCam; varying vec3 vW;
+      float W[7]; float PX[7];
+      void main(){ ${ROAD_W.map((v, i) => `W[${i}]=${v.toFixed(4)}; PX[${i}]=${ROAD_PX[i].toFixed(2)};`).join(" ")}
+        int k=int(mod(aKind,10.)+.5); float w=0., px=1.;
+        for(int i=0;i<7;i++){ if(i==k){ w=W[i]; px=PX[i]; } }
+        vec4 c=modelMatrix*vec4(position,1.); float d=length(cameraPosition-c.xyz); vCam=d;
+        float hw=max(w, uPx*d*px)*.5*2.2;                // ruban un peu plus large que la route : place pour le halo
+        c.xz+=aN*aSide*hw; c.y+=.0006*d;                 // de loin, on le soulève à peine (pas de clignotement)
+        vSide=aSide; vDist=aDist; vKind=aKind; vW=c.xyz; gl_Position=projectionMatrix*viewMatrix*c; }`,
+    fragmentShader: `uniform float uTime,uReveal,uNight,uThermMix,uXMix; varying float vSide, vDist, vKind, vCam; varying vec3 vW;
+      void main(){
+        float r=length(vW.xz); if(r>uReveal || r>${(R_TABLE - .2).toFixed(1)}) discard;
+        float tun=step(9.5,vKind), k=mod(vKind,10.), s=abs(vSide);
+        float body=1.-smoothstep(.38,.48,s), glow=exp(-s*s*6.)*.55, core=1.-smoothstep(.0,.12,s);
+        vec3 col; float a;
+        if(k<.5){ col=vec3(1.,.66,.25); }                 // autoroute : ambre
+        else if(k<1.5){ col=vec3(1.,.78,.36); }            // nationale
+        else if(k<2.5){ col=vec3(.95,.9,.55); }            // départementale
+        else if(k<3.5){ col=vec3(.62,.95,1.); }            // route locale : cyan
+        else if(k<4.5){ col=vec3(.5,.86,1.); }             // rue
+        else if(k<5.5){ col=vec3(.45,.95,.7); }            // chemin : vert
+        else { col=vec3(.75,1.,.8); }                      // sentier
+        float lum=(body*.55+core*.9)+glow;
+        if(k>4.5){ float dash=step(.45,fract(vDist*(k>5.5?90.:45.))); lum*=dash; lum*=1.-smoothstep(5.,9.,vCam); }
+        if(k>3.5 && k<4.5) lum*=1.-smoothstep(9.,16.,vCam);
+        // circulation : feux blancs dans un sens, feux rouges dans l'autre (grands axes)
+        if(k<2.5 && tun<.5){ float lane=step(0.,vSide);
+          float f=fract(vDist*(k<.5?7.:4.)+uTime*(lane>.5?.22:-.22)*(k<.5?1.5:1.));
+          float car=smoothstep(.0,.04,f)*(1.-smoothstep(.04,.12,f))*(1.-smoothstep(.15,.42,s));
+          col=mix(col, lane>.5?vec3(1.,.96,.85):vec3(1.,.25,.2), car*.9); lum+=car*1.6; }
+        lum*=1.+uNight*.6;                                // la nuit, les routes s'allument
+        if(tun>.5) lum*=.35*step(.5,fract(vDist*30.));     // tunnel : pointillés discrets
+        vec3 th=vec3(1.,.55,.15)*lum; vec3 xr=vec3(.38,.9,1.)*lum*.6;
+        vec3 c=mix(col*lum,th,uThermMix*.7); c=mix(c,xr,uXMix);
+        a=clamp(lum,0.,1.)*(1.-smoothstep(${(R_TABLE - 1.2).toFixed(1)},${(R_TABLE - .2).toFixed(1)},r));
+        gl_FragColor=vec4(c,a); }` });
+  const mesh = new T.Mesh(geo, m); mesh.renderOrder = 2.5; H.scene.add(mesh); H.roads = mesh;
+}
+
+/* ---------- champ de vision : tout ce qu'on voit depuis un point (courbure de la Terre comprise) ---------- */
+function computeViewshed(ox, on, eye = .002) {
+  const NR = 1440, STEP = .045, MAXD = Math.hypot(R_TABLE, R_TABLE) + Math.hypot(ox, on), NSTEP = Math.ceil(MAXD / STEP);
+  const vis = new Uint8Array(NR * NSTEP), h0 = heightM(ox, on) + eye * 1000;
+  let far = 0;
+  for (let r = 0; r < NR; r++) {
+    const a = r / NR * Math.PI * 2, dx = Math.sin(a), dn = Math.cos(a);
+    let best = -1e9;
+    for (let k = 1; k < NSTEP; k++) {
+      const d = k * STEP, x = ox + dx * d, n = on + dn * d;
+      if (Math.abs(x) > EXT || Math.abs(n) > EXT) break;
+      const tan = (heightM(x, n) - .0683 * d * d - h0) / (d * 1000);
+      if (tan >= best) { vis[r * NSTEP + k] = 1; best = tan; if (Math.hypot(x, n) < R_TABLE && d > far) far = d; }
+    }
+  }
+  const look = (x, n) => { const d = Math.hypot(x - ox, n - on); if (d < STEP) return 1;
+    const a = (Math.atan2(x - ox, n - on) + Math.PI * 2) % (Math.PI * 2), r = Math.round(a / (Math.PI * 2) * NR) % NR, k = Math.min(NSTEP - 1, Math.round(d / STEP));
+    return vis[r * NSTEP + k]; };
+  const data = H.vsTex.image.data; let seen = 0, tot = 0;
+  for (let j = 0; j < VS_N; j++) for (let i = 0; i < VS_N; i++) {
+    const x = -R_TABLE + 2 * R_TABLE * (i + .5) / VS_N, n = -R_TABLE + 2 * R_TABLE * (j + .5) / VS_N, v = look(x, n);
+    data[j * VS_N + i] = v ? 255 : 0;
+    if (Math.hypot(x, n) < R_TABLE) { tot++; seen += v; }
+  }
+  H.vsTex.needsUpdate = true;
+  const peaks = H.peaks.filter((p) => look(p.x, p.n));
+  return { pct: seen / Math.max(1, tot) * 100, far, peaks };
+}
+H.viewshed = function (x = 0, n = 0, name = "") {
+  const t0 = performance.now(), r = computeViewshed(x, n);
+  H.U.uVSC.value.set(x, -n); H.U.uVSR.value = 0; H.U.uVSOn.value = 1; H.vsOn = true;
+  if (H.onViewshed) H.onViewshed(true);
+  const pk = r.peaks.slice(0, 3).map((p) => p.name).join(", ");
+  say(`Champ de vision depuis ${name || (H.opts.ville || "le domicile")} : ${r.pct.toFixed(0)} % de la table visible, jusqu'à ${r.far.toFixed(1)} km. `
+    + (r.peaks.length ? `${r.peaks.length} sommet${r.peaks.length > 1 ? "s" : ""} en vue (${pk}${r.peaks.length > 3 ? "…" : ""}).` : "Aucun sommet nommé en vue.") + ` Calcul : ${Math.round(performance.now() - t0)} ms.`, "s");
+  return r;
+};
+H.viewshedOff = function () { H.U.uVSOn.value = 0; H.vsOn = false; if (H.onViewshed) H.onViewshed(false); say("Champ de vision masqué."); };
+
 /* ---------- étiquettes ---------- */
 const fmtAlt = (m) => Math.round(m).toLocaleString("fr-FR").replace(/ | /g, " ") + " m";
 function addLabel(pos, html, cls) {
@@ -448,6 +603,8 @@ function frame(now) {
     U.uRise.value = Math.min(1, U.uRise.value + dt * .7);
   }
   applyCam();
+  if (H.U.uVSOn.value > 0 && H.U.uVSR.value < R_TABLE + 8) H.U.uVSR.value += dt * 9;
+  H.U.uPx.value = 2 * Math.tan(H.camera.fov * D2R / 2) / Math.max(200, H.opts.canvas.clientHeight || innerHeight);
   if (scanT >= 0) { scanT += dt; U.uScanR.value = scanT * 7; if (scanT > 3) { scanT = -1; U.uScanR.value = -1; } }
   const modeK = 1 - Math.exp(-dt * 6);
   U.uThermMix.value += ((H.vision === 1 ? 1 : 0) - U.uThermMix.value) * modeK;
@@ -505,9 +662,13 @@ H.init = async function (opts) {
         try { const z = await (await fetch("zone", { cache: "no-store" })).json(); if (z.etat === "ok") return z; } catch (e) { /* on réessaie */ }
         await new Promise((r) => setTimeout(r, i < 3 ? 1500 : 4000)); if (H.ready && i > 3) return null; } return null; })();
       await loadDEM();
-      const tex = await buildTexture(opts.tileImg);
+      const routesP = (async () => { for (let i = 0; i < 40; i++) {
+        try { const z = await (await fetch("routes", { cache: "no-store" })).json(); if (z.etat === "ok") return z; } catch (e) { /* on réessaie */ }
+        await new Promise((r) => setTimeout(r, i < 3 ? 2000 : 5000)); } return null; })();
+      const [tex, texD] = await Promise.all([buildTexture(opts.tileImg, MAP_Z, 4096, EXT), buildTexture(opts.tileImg, DET_Z, 4096, DET_E)]);
       const zone = await Promise.race([zoneP, new Promise((r) => setTimeout(() => r(null), 4000))]);
-      buildScene(tex, zone);
+      buildScene(tex, zone, texD);
+      routesP.then((r) => { if (r && r.routes) { buildRoads(r.routes); if (H.active && H.mode === "atlas") say(`Réseau routier chargé : ${H.roadKm.toFixed(0)} km de routes et sentiers.`, "s"); } });
       H.zoneLate = zone ? null : zoneP;
       if (H.zoneLate) H.zoneLate.then((z) => { if (z && !H.buildings) { buildBuildings(z); buildLines(z); buildDyn();
         H.say && H.say(`Données OpenStreetMap reçues : ${H.buildingCount} bâtiments en 3D, ${H.peaks.length} sommets.`, "s"); } });
@@ -704,7 +865,19 @@ H.command = function (raw) {
   const c = norm(raw);
   if (!c) return;
   let m;
-  if (/^(aide|help|\?)$/.test(c)) say("Commandes : cible <lieu>, scan, survol, thermique, rayons x, holo, drones, satellite, meteo, nuages, soleil <heure>, soleil maintenant, recentre, quitter.");
+  if (/^(aide|help|\?)$/.test(c)) say("Commandes : cible <lieu>, champ de vision (depuis <lieu>), routes, scan, survol, thermique, rayons x, holo, drones, satellite, meteo, nuages, soleil <heure>, soleil maintenant, recentre, quitter.");
+  else if (/champ de vision|champs? de vue|visibilite|ce que (?:je|on) voi|qu est ce qu on voit|vue depuis|viewshed|angle mort/.test(c)) {
+    const off = /\b(off|coupe|enleve|cache|masque|stop|arrete|desactive|retire)\b/.test(c);
+    const dep = c.match(/depuis (?:le |la |les |l )?(.+)$/);
+    if (off || (H.vsOn && !dep)) H.viewshedOff();
+    else if (dep && /^(cible|ici|la cible|le point)$/.test(dep[1]) && H.tgt.visible) H.viewshed(H.tgt.position.x, -H.tgt.position.z, "la cible");
+    else if (dep) { const p = H.findPlace(dep[1]); if (p) { H.target(p.x, p.n, p.name, false); H.viewshed(p.x, p.n, p.name); } else say(`Je ne trouve pas « ${dep[1]} » sur la table.`, "w"); }
+    else H.viewshed(0, 0);
+  }
+  else if (/^(?:affiche |montre |cache |masque |enleve )?(?:les )?(routes?|chemins?|sentiers?)\b/.test(c)) {
+    if (H.roads) { H.roads.visible = /cache|masque|enleve/.test(c) ? false : /affiche|montre/.test(c) ? true : !H.roads.visible; if (H.onRoads) H.onRoads(H.roads.visible); say(H.roads.visible ? `Réseau routier affiché : ${H.roadKm.toFixed(0)} km.` : "Routes masquées."); }
+    else say("Les routes sont encore en téléchargement.", "w");
+  }
   else if (/thermi/.test(c)) H.setVision(1);
   else if (/rayon|x ?ray|transparen/.test(c)) H.setVision(2);
   else if (/^(holo|normal|standard)/.test(c)) H.setVision(0);

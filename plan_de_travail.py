@@ -21,6 +21,7 @@ import ctypes
 import http.server
 import json
 import logging
+import math
 import os
 import secrets
 import shutil
@@ -496,6 +497,52 @@ def fetch_zone(lat: float, lon: float) -> dict:
     return out
 
 
+# Routes de la holo-table : 0 autoroute/voie rapide, 1 nationale, 2 départementale, 3 route locale,
+# 4 rue, 5 chemin carrossable, 6 sentier
+ROUTE_KIND = {"motorway": 0, "trunk": 0, "motorway_link": 0, "trunk_link": 0, "primary": 1, "primary_link": 1,
+              "secondary": 2, "secondary_link": 2, "tertiary": 3, "tertiary_link": 3, "unclassified": 4,
+              "residential": 4, "living_street": 4, "pedestrian": 4, "track": 5, "path": 6, "footway": 6,
+              "bridleway": 6, "steps": 6}
+
+
+def _thin(g: list, min_m: float) -> list:
+    """Retire les points trop rapprochés (fichier plus léger, tracé identique à l'œil)."""
+    if len(g) < 3:
+        return g
+    out, k = [g[0]], math.cos(math.radians(g[0][0]))
+    for p in g[1:-1]:
+        q = out[-1]
+        if math.hypot((p[0] - q[0]) * 111320, (p[1] - q[1]) * 111320 * k) >= min_m:
+            out.append(p)
+    out.append(g[-1])
+    return out
+
+
+def fetch_routes(lat: float, lon: float) -> dict:
+    """Routes et chemins autour de toi : grands axes (16 km), rues (6 km), chemins et sentiers (8 km)."""
+    a = f"{lat},{lon}"
+    q = (f"[out:json][timeout:90];"
+         f"(way[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary)(_link)?$\"](around:16000,{a}););out tags geom;"
+         f"(way[\"highway\"~\"^(unclassified|residential|living_street|pedestrian)$\"](around:6000,{a}););out tags geom;"
+         f"(way[\"highway\"~\"^(track|path|footway|bridleway|steps)$\"](around:8000,{a}););out tags geom;")
+    req = urllib.request.Request(OVERPASS, data=urllib.parse.urlencode({"data": q}).encode(),
+                                 headers={"User-Agent": "Jarvis-Klypp/1.0 (assistant personnel, usage privé)"})
+    with urllib.request.urlopen(req, timeout=120) as r:
+        j = json.loads(r.read().decode("utf-8"))
+    routes = []
+    for e in j.get("elements", []):
+        t = e.get("tags") or {}
+        kind = ROUTE_KIND.get(t.get("highway", ""))
+        g = [[round(p["lat"], 5), round(p["lon"], 5)] for p in e.get("geometry") or []]
+        if kind is None or len(g) < 2:
+            continue
+        g = _thin(g, 6 if kind <= 4 else 12)
+        name = t.get("ref") if kind <= 1 and t.get("ref") else t.get("name", "")
+        routes.append([kind, name, 1 if t.get("tunnel") in ("yes", "building_passage") else 0, g])
+    routes.sort(key=lambda r: r[0])
+    return {"routes": routes[:12000]}
+
+
 
 # ============================================================================
 # Icônes des applis (celles de Windows)
@@ -608,6 +655,7 @@ class Workspace:
         self.boot_seq = 0                                  # +1 = la page rejoue l'animation du globe
         self.holo_seq = 0                                  # +1 = nouvelle commande pour la holo-table
         self._zone_lock = threading.Lock()
+        self._routes_lock = threading.Lock()
 
     # --- branchement
     def attach(self, presence, actions, brain, ask, say) -> None:
@@ -805,6 +853,36 @@ class Workspace:
         threading.Thread(target=fetch, daemon=True).start()
         return {"etat": "en cours"}
 
+    def routes(self) -> dict:
+        """Routes, rues, chemins et sentiers autour de ta position (gardés sur le PC)."""
+        lieu = self.state.get("lieu") or {}
+        try:
+            lat, lon = float(lieu["lat"]), float(lieu["lon"])
+        except (KeyError, TypeError, ValueError):
+            return {"etat": "position inconnue"}
+        f = CACHE / f"routes_{lat:.3f}_{lon:.3f}.json"
+        if f.is_file():
+            try:
+                return {"etat": "ok", **json.loads(f.read_text(encoding="utf-8"))}
+            except (OSError, ValueError):
+                pass
+        if self._routes_lock.locked():
+            return {"etat": "en cours"}
+
+        def fetch() -> None:
+            with self._routes_lock:
+                try:
+                    data = fetch_routes(lat, lon)
+                    f.parent.mkdir(parents=True, exist_ok=True)
+                    f.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+                    log.info("Holo-table : %d routes et chemins autour de toi.", len(data["routes"]))
+                except Exception as e:  # noqa: BLE001
+                    log.info("Holo-table : routes OpenStreetMap indisponibles (%s)", e)
+                    time.sleep(60)
+
+        threading.Thread(target=fetch, daemon=True).start()
+        return {"etat": "en cours"}
+
     def holo(self, cmd: str, arg: str = "") -> str:
         """Commande vocale pour la holo-table (ouvre le plan de travail si besoin)."""
         self.holo_seq += 1
@@ -887,6 +965,9 @@ class Workspace:
                 if p == "zone":
                     return self._send(200, json.dumps(ws.zone(), ensure_ascii=False).encode("utf-8"),
                                       "application/json")
+                if p == "routes":
+                    return self._send(200, json.dumps(ws.routes(), ensure_ascii=False).encode("utf-8"),
+                                      "application/json")
                 if p.startswith("web/"):
                     f = (BASE / p).resolve()
                     web = (BASE / "web").resolve()
@@ -947,6 +1028,7 @@ class Workspace:
         self.state["lieu"] = locate()                       # position à jour avant le globe (cache disque)
         self.state["sons"] = sound_volume()                 # bruitages de l'animation (JARVIS_PLAN_SONS)
         self.zone()                                         # bâtiments / sommets pour la holo-table (en fond)
+        self.routes()                                       # routes et sentiers (en fond)
         self.open_flag.set()
         threading.Thread(target=self._collect, daemon=True).start()
         try:

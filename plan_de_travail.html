@@ -471,6 +471,8 @@ button { font: inherit; color: inherit; }
       <button class="abtn" id="atlDrones">Drones <kbd>D</kbd></button>
       <button class="abtn" id="atlSat">Satellite <kbd>T</kbd></button>
       <button class="abtn" id="atlClouds">Nuages réels <kbd>N</kbd></button>
+      <button class="abtn" id="atlVS" title="Ce qu'on voit depuis la maison (ou depuis la cible)">Champ de vision <kbd>C</kbd></button>
+      <button class="abtn on" id="atlRoads">Routes <kbd>G</kbd></button>
     </div>
     <div class="atl-grp atl-sun">
       <div class="row"><span>SOLEIL</span><b id="atlSunV">--:--</b></div>
@@ -890,12 +892,16 @@ function tile(z, x, y) {
   return tiles.get(k);
 }
 const HOLO_COL = [[2, 14, 32, 215], [5, 52, 112, 235], [4, 46, 52, 225], [14, 78, 122, 245], [62, 176, 232, 235], [255, 166, 60, 245], [200, 244, 255, 255]];
+const ROAD_DIM = { 4: [22, 92, 140, 235], 5: [120, 92, 50, 235] };
 const EDGE = { 1: [70, 170, 255], 2: [50, 210, 170], 3: [110, 235, 255] };
-const HALO = document.createElement("canvas"); HALO.width = HALO.height = 64; const HALO_X = HALO.getContext("2d");
-function holoTile(im) {                                  // fond / eau / verdure / bâtiments / routes / grands axes / texte
-  const N = 256, c = document.createElement("canvas"); c.width = c.height = N;
+const HALOS = {};
+// fond / eau / verdure / bâtiments / routes / grands axes / texte. N = 512 : image agrandie AVANT la conversion
+// (contours deux fois plus fins, sans escaliers) ; dim : routes de la carte atténuées (la holo-table dessine les vraies)
+function holoTile(im, N = 256, dim = 0) {
+  const c = document.createElement("canvas"); c.width = c.height = N;
   const x = c.getContext("2d", { willReadFrequently: true });
-  x.drawImage(im, 0, 0, N, N);
+  x.imageSmoothingQuality = "high"; x.drawImage(im, 0, 0, N, N);
+  const hs = N >> 2, HALO = HALOS[hs] || (HALOS[hs] = Object.assign(document.createElement("canvas"), { width: hs, height: hs })), HALO_X = HALO.getContext("2d");
   let d; try { d = x.getImageData(0, 0, N, N); } catch (e) { return null; }
   const p = d.data, cls = new Uint8Array(N * N);
   for (let k = 0, i = 0; k < N * N; k++, i += 4) {
@@ -908,7 +914,7 @@ function holoTile(im) {                                  // fond / eau / verdure
       : mx - mn < 24 && l < 216 ? 3 : 0;
   }
   for (let k = 0, i = 0; k < N * N; k++, i += 4) {
-    const c0 = cls[k], col = HOLO_COL[c0];
+    const c0 = cls[k], col = dim && (c0 === 4 || c0 === 5) ? ROAD_DIM[c0] : HOLO_COL[c0];
     p[i] = col[0]; p[i + 1] = col[1]; p[i + 2] = col[2]; p[i + 3] = col[3];
     const xx = k % N, yy = (k / N) | 0;
     if (xx < N - 1 && yy < N - 1) {                    // contours lumineux (bâtiments, eau, forêts)
@@ -920,7 +926,7 @@ function holoTile(im) {                                  // fond / eau / verdure
   x.putImageData(d, 0, 0);
   const o = document.createElement("canvas"); o.width = o.height = N; const ox = o.getContext("2d");
   ox.drawImage(c, 0, 0);
-  HALO_X.clearRect(0, 0, 64, 64); HALO_X.drawImage(c, 0, 0, 64, 64);       // halo : réduit puis agrandi = flou rapide
+  HALO_X.clearRect(0, 0, hs, hs); HALO_X.drawImage(c, 0, 0, hs, hs);       // halo : réduit puis agrandi = flou rapide
   ox.globalCompositeOperation = "lighter"; ox.globalAlpha = .42; ox.imageSmoothingQuality = "high"; ox.drawImage(HALO, 0, 0, N, N);
   return o;
 }
@@ -1567,8 +1573,8 @@ $("#close").addEventListener("click", () => { if (LIVE) send({ type: "fermer" })
 const atlas = $("#atlas"), hw = $("#holoWrap");
 let holoOn = false, pendingAtlas = false, holoSeq = null, tgtN = 1;
 const holoReady = () => !!(window.HOLO && HOLO.ready);
-function holoTileImg(z, x, y) {
-  return new Promise((ok) => { const im = new Image(); im.onload = () => { try { ok(holoTile(im) || im); } catch (e) { ok(im); } }; im.onerror = () => ok(null); im.src = `tuile/${z}/${x}/${y}.png`; });
+function holoTileImg(z, x, y, o = {}) {
+  return new Promise((ok) => { const im = new Image(); im.onload = () => { try { ok(holoTile(im, o.size || 256, o.dim || 0) || im); } catch (e) { ok(im); } }; im.onerror = () => ok(null); im.src = `tuile/${z}/${x}/${y}.png`; });
 }
 const fmtM = (m) => Math.round(m).toLocaleString("fr-FR").replace(/ | /g, " ") + " m";
 function atlasSay(text, cls) {
@@ -1609,6 +1615,8 @@ function startHolo() {
   if (!LIVE || !window.HOLO || HOLO.loading || HOLO.failed || !(S.lieu && S.lieu.lat)) return;
   if (!(target.lat === +S.lieu.lat && target.lon === +S.lieu.lon)) setTarget();
   HOLO.say = atlasSay; HOLO.onTarget = showTarget; HOLO.onClose = closeAtlas; HOLO.onSun = syncSun;
+  HOLO.onViewshed = (on) => $("#atlVS").classList.toggle("on", on);
+  HOLO.onRoads = (on) => $("#atlRoads").classList.toggle("on", on);
   HOLO.init({ lat: target.lat, lon: target.lon, ville: (S.lieu || {}).ville, canvas: $("#holo"), labels: $("#hlabels"),
     meteo: S.meteo, tileImg: holoTileImg, report }).then((ok) => {
     if (!ok) return;
@@ -1645,6 +1653,8 @@ $("#atlDrones").addEventListener("click", (e) => e.currentTarget.classList.toggl
 $("#atlSat").addEventListener("click", (e) => e.currentTarget.classList.toggle("on", HOLO.toggleSat()));
 $("#atlClouds").addEventListener("click", (e) => e.currentTarget.classList.toggle("on", HOLO.toggleClouds()));
 $("#atlScan").addEventListener("click", () => { HOLO.scan(); SFX.mapIn && SFX.mapIn(); });
+$("#atlVS").addEventListener("click", () => { if (HOLO.vsOn) HOLO.viewshedOff(); else if (HOLO.tgt && HOLO.tgt.visible) HOLO.viewshed(HOLO.tgt.position.x, -HOLO.tgt.position.z, "la cible"); else HOLO.viewshed(0, 0); SFX.mapIn && SFX.mapIn(); });
+$("#atlRoads").addEventListener("click", () => HOLO.command("routes"));
 $("#atlFly").addEventListener("click", () => HOLO.flyover());
 $("#atlHome").addEventListener("click", () => HOLO.recenter());
 $("#atlSunR").addEventListener("input", (e) => { HOLO.setSunHour(+e.target.value); syncSun(); });
@@ -1654,7 +1664,7 @@ addEventListener("keydown", (e) => {
   if (atlas.hidden || e.target === $("#atlCmd")) return;
   const k = e.key.toLowerCase(), map = { "1": () => $('#atlLeft [data-v="0"]').click(), "2": () => $('#atlLeft [data-v="1"]').click(),
     "3": () => $('#atlLeft [data-v="2"]').click(), s: () => $("#atlScan").click(), v: () => $("#atlFly").click(), d: () => $("#atlDrones").click(),
-    t: () => $("#atlSat").click(), n: () => $("#atlClouds").click(), r: () => $("#atlHome").click(), escape: closeAtlas };
+    t: () => $("#atlSat").click(), n: () => $("#atlClouds").click(), c: () => $("#atlVS").click(), g: () => $("#atlRoads").click(), r: () => $("#atlHome").click(), escape: closeAtlas };
   if (map[k]) { e.preventDefault(); map[k](); }
 });
 
