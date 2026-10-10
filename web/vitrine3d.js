@@ -176,7 +176,7 @@
     // peinture recadrée (agrandie proprement si l'image est petite : meilleures mipmaps)
     const up = cw < 900 ? 2 : 1, tex = document.createElement("canvas"); tex.width = cw * up; tex.height = ch * up;
     const tx = tex.getContext("2d", { willReadFrequently: true }); tx.imageSmoothingQuality = "high"; tx.drawImage(c, x0, y0, cw, ch, 0, 0, tex.width, tex.height);
-    try { sharpen(tex, .6); } catch (e) {}
+    try { sharpen(tex, .35); } catch (e) {}
     // carte de hauteur (silhouette arrondie) et carte de détails (relief de la peinture), en basse définition
     const aw = Math.min(400, cw), ah = Math.max(8, Math.round(ch * aw / cw));
     const a = document.createElement("canvas"); a.width = aw; a.height = ah;
@@ -186,7 +186,7 @@
     // profil d'épaisseur selon la distance au bord :
     //  couteaux : en biseau jusqu'au fil (tranchant fin, dos plus épais) ; gants : rembourrés ; armes : flancs plats, arêtes vives
     const dist = distField(alpha, aw, ah), height = new Float32Array(aw * ah);
-    const D = cat === "couteau" ? aw * .055 : cat === "gants" ? aw * .11 : aw * .022;
+    const D = cat === "couteau" ? aw * .035 : cat === "gants" ? aw * .09 : aw * .01;    // armes à feu : flancs plats, arête fine
     for (let i = 0; i < aw * ah; i++) {
       const q = clamp(dist[i] / D, 0, 1);
       height[i] = cat === "couteau" ? q : cat === "gants" ? Math.sqrt(q) : q * q * (3 - 2 * q);
@@ -220,19 +220,20 @@
     return g;
   }
   const LOOK = {                       // matière selon le type d'arme
-    couteau: { metalness: .36, roughness: .22, clearcoat: .75, clearcoatRoughness: .05, thick: .04 },
-    gants: { metalness: .04, roughness: .62, clearcoat: .12, clearcoatRoughness: .5, thick: .12 },
-    sniper: { metalness: .32, roughness: .34, clearcoat: .9, clearcoatRoughness: .07, thick: .085 },
-    fusil: { metalness: .32, roughness: .34, clearcoat: .9, clearcoatRoughness: .07, thick: .085 },
-    pistolet: { metalness: .38, roughness: .3, clearcoat: .9, clearcoatRoughness: .07, thick: .1 },
+    // peinture satinée fidèle à l'image officielle ; un léger vernis donne les reflets sans noyer les couleurs
+    couteau: { metalness: .2, roughness: .3, clearcoat: .55, clearcoatRoughness: .1, thick: .032, nscale: .8, env: .9 },
+    gants: { metalness: 0, roughness: .62, clearcoat: .1, clearcoatRoughness: .5, thick: .09, nscale: 1, env: .6 },
+    sniper: { metalness: .06, roughness: .42, clearcoat: .4, clearcoatRoughness: .18, thick: .045, nscale: 0, env: .65 },
+    fusil: { metalness: .06, roughness: .42, clearcoat: .4, clearcoatRoughness: .18, thick: .045, nscale: 0, env: .65 },
+    pistolet: { metalness: .08, roughness: .4, clearcoat: .4, clearcoatRoughness: .18, thick: .05, nscale: 0, env: .65 },
   };
   function build(an, skin) {
     const THREE = T(), look = LOOK[skin.categorie] || LOOK.fusil;
     const width = Math.min(2.75, 1.6 * an.aspect), maxA = R.capabilities.getMaxAnisotropy();
     const map = new THREE.CanvasTexture(an.tex); map.encoding = THREE.sRGBEncoding; map.anisotropy = maxA;
     const nmap = new THREE.CanvasTexture(an.normal); nmap.anisotropy = maxA;
-    const mk = (back) => new THREE.MeshPhysicalMaterial({ map, normalMap: nmap, normalScale: new THREE.Vector2(back ? -1 : 1, 1), alphaTest: .5,
-      metalness: look.metalness, roughness: look.roughness, clearcoat: look.clearcoat, clearcoatRoughness: look.clearcoatRoughness, envMapIntensity: 1.25 });
+    const mk = (back) => new THREE.MeshPhysicalMaterial({ map, normalMap: look.nscale ? nmap : null, normalScale: new THREE.Vector2((back ? -1 : 1) * look.nscale, look.nscale), alphaTest: .5,
+      metalness: look.metalness, roughness: look.roughness, clearcoat: look.clearcoat, clearcoatRoughness: look.clearcoatRoughness, envMapIntensity: look.env });
     const front = new THREE.Mesh(geometry(an, width, look.thick, false), mk(false));
     const back = new THREE.Mesh(geometry(an, width, look.thick, true), mk(true));
     const g = new THREE.Group(); g.add(front, back);
@@ -283,7 +284,7 @@
   V.dragStart = (x, y) => { st.drag = { x, y }; st.lastUser = performance.now(); };
   V.dragMove = (x, y) => {
     if (!st.drag) return; const dx = x - st.drag.x, dy = y - st.drag.y; st.drag = { x, y };
-    st.yaw += dx * .0105; st.pitch = clamp(st.pitch + dy * .007, -1.1, 1.1); st.vy = dx * .0105; st.vp = dy * .007; st.lastUser = performance.now();
+    st.yaw = clamp(st.yaw + dx * .006, -.85, .85); st.pitch = clamp(st.pitch + dy * .005, -.45, .45); st.vy = dx * .006; st.vp = dy * .005; st.lastUser = performance.now();
   };
   V.dragEnd = () => { if (!st.drag) return 0; st.drag = null; st.lastUser = performance.now(); if (Math.abs(st.vy) > .12) st.vy *= 1.8; return Math.abs(st.vy); };
   // l'objet est-il sous la souris ? (en tenant compte des parties transparentes de l'image)
@@ -303,26 +304,21 @@
     st.smx += (st.mx - st.smx) * Math.min(1, dt * 4); st.smy += (st.my - st.smy) * Math.min(1, dt * 4);
     // inertie de la rotation à la main, puis retour doux à la chorégraphie
     if (!st.drag) {
-      st.yaw += st.vy; st.pitch += st.vp; st.vy *= .95; st.vp *= .9;
-      if (now - st.lastUser > 2600) {
-        const k = Math.min(1, dt * 1.6), full = Math.round(st.yaw / (Math.PI * 2)) * Math.PI * 2;
-        st.yaw += (full - st.yaw) * k; if (Math.abs(full - st.yaw) < .002) st.yaw = 0; st.pitch += (0 - st.pitch) * k;
-      }
+      // l'objet reste de face ou de trois quarts (une image plate vue de profil n'est jamais belle)
+      st.yaw = clamp(st.yaw + st.vy, -.85, .85); st.pitch = clamp(st.pitch + st.vp, -.45, .45); st.vy *= .9; st.vp *= .88;
+      if (Math.abs(st.yaw) >= .85) st.vy = 0;
+      if (now - st.lastUser > 2600) { const k = Math.min(1, dt * 1.6); st.yaw += (0 - st.yaw) * k; st.pitch += (0 - st.pitch) * k; }
     }
     for (let i = items.length - 1; i >= 0; i--) {
       const it = items[i], g = it.g, tt = (now - it.t0) / 1000;
-      // chorégraphie : balancement, demi-tour pour montrer l'autre face, retour, léger flottement
-      let yaw = Math.sin(tt * .45) * (st.inspect ? .9 : .42);
-      if (!st.inspect) {
-        if (tt > 3.3) yaw += Math.PI * ease(clamp((tt - 3.3) / 1.7, 0, 1));
-        if (tt > 6.2) yaw += Math.PI * ease(clamp((tt - 6.2) / 1.7, 0, 1));
-      }
+      // chorégraphie : balancement de trois quarts à trois quarts, léger flottement
+      let yaw = Math.sin(tt * .45) * (st.inspect ? .5 : .36) + Math.sin(tt * .17) * .08;
       let x = 0, s = 1, extraYaw = 0;
       if (it.state === "enter") {
-        const e = clamp(tt / 1.15, 0, 1); x = it.dir * 4.6 * Math.pow(1 - e, 3); extraYaw = -it.dir * 2.6 * (1 - easeOutBack(e)); s = .55 + .45 * easeOutBack(e);
+        const e = clamp(tt / 1.15, 0, 1); x = it.dir * 4.6 * Math.pow(1 - e, 3); extraYaw = -it.dir * .9 * (1 - easeOutBack(e)); s = .55 + .45 * easeOutBack(e);
         if (e >= 1) it.state = "idle";
       } else if (it.state === "leave") {
-        const q = clamp((now - it.tl) / 650, 0, 1); x = -it.dir * 5.2 * q * q; extraYaw = it.dir * 2.2 * q; s = 1 - .45 * q;
+        const q = clamp((now - it.tl) / 650, 0, 1); x = -it.dir * 5.2 * q * q; extraYaw = it.dir * .8 * q; s = 1 - .45 * q;
         if (q >= 1) { dispose(it); items.splice(i, 1); continue; }
       }
       g.position.set(x, SKIN_Y + Math.sin(t * 1.15) * .055, 0);
@@ -344,7 +340,7 @@
     cam.position.z += (dz - cam.position.z) * Math.min(1, dt * 2.5);
     cam.lookAt(0, LOOK_Y, 0);
     // lumières vivantes
-    sweepL.position.set(st.smx * 3.2, -st.smy * 2.2 + SKIN_Y, 2.3);
+    sweepL.position.set(st.smx * 3.2 + Math.sin(t * .7) * 1.6, -st.smy * 2.2 + SKIN_Y + .4, 2.3);   // reflet qui glisse sur la peinture
     rimA.position.set(3.4 * Math.cos(t * .25), 1.4, -2.2 + Math.sin(t * .25));
     if (decor) { const fl = decor.update(dt, t, cam); glow.material.opacity = .16 + fl * .2; finalPass.uniforms.uFlash.value = fl; }
     else {

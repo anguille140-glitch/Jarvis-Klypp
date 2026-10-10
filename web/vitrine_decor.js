@@ -306,7 +306,7 @@
     ground2.rotation.x = -Math.PI / 2; ground2.position.y = .01; holo.add(ground2); rarityMats.push(ground2.material);
     const orbits = [1.75, 2.0, 2.3].map((r, i) => {
       const t = new THREE.Mesh(new THREE.TorusGeometry(r, .003 + i * .0015, 8, 160, Math.PI * (1.2 + i * .25)), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .2, blending: THREE.AdditiveBlending, toneMapped: false }));
-      t.position.y = 1.45; t.rotation.x = Math.PI / 2 + (i - 1) * .35; holo.add(t); rarityMats.push(t.material); return t;
+      t.position.y = .38 + i * .08; t.rotation.x = Math.PI / 2 + (i - 1) * .08; holo.add(t); rarityMats.push(t.material); return t;
     });
     const column = new THREE.Mesh(new THREE.CylinderGeometry(1.02, 1.08, 3.4, 64, 1, true), new THREE.MeshBasicMaterial({ map: vgrad([[0, "rgba(255,255,255,0)"], [.7, "rgba(255,255,255,.35)"], [1, "rgba(255,255,255,.9)"]]),
       transparent: true, opacity: .045, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
