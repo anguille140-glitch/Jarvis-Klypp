@@ -66,6 +66,17 @@ button { font: inherit; color: inherit; }
 #boot .lock span { font: 12px var(--f-data); color: var(--ok); letter-spacing: .2em; }
 #boot .osm { position: absolute; right: 12px; bottom: 34px; font: 10px var(--f-data); color: #5f7f9f; opacity: 0; transition: opacity .6s; }
 #boot .skip { position: absolute; right: 16px; bottom: 12px; font: 11px var(--f-data); color: var(--ink-dim); letter-spacing: .2em; }
+#boot .hexbg { position: absolute; inset: -60px; pointer-events: none; z-index: 1; opacity: .5;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='97' viewBox='0 0 56 97'%3E%3Cpath d='M28 0l28 16v32L28 64 0 48V16zM28 64v33M0 16L-28 0M56 16l28-16' fill='none' stroke='%234fd8ff' stroke-opacity='.10' stroke-width='1'/%3E%3C/svg%3E");
+  -webkit-mask-image: radial-gradient(ellipse at 50% 50%, transparent 30%, #000 75%); mask-image: radial-gradient(ellipse at 50% 50%, transparent 30%, #000 75%);
+  animation: hexdrift 24s linear infinite; }
+@keyframes hexdrift { to { transform: translate(56px, 97px); } }
+#boot .hudframe { position: absolute; inset: clamp(10px, 2vw, 24px); pointer-events: none; z-index: 2; }
+#boot .hudframe i { position: absolute; width: 46px; height: 46px; border: 0 solid rgba(79, 216, 255, .6); }
+#boot .hudframe i:nth-child(1) { left: 0; top: 0; border-width: 2px 0 0 2px; }
+#boot .hudframe i:nth-child(2) { right: 0; top: 0; border-width: 2px 2px 0 0; }
+#boot .hudframe i:nth-child(3) { left: 0; bottom: 0; border-width: 0 0 2px 2px; }
+#boot .hudframe i:nth-child(4) { right: 0; bottom: 0; border-width: 0 2px 2px 0; }
 #boot.out { opacity: 0; transform: scale(1.06); transition: opacity 1s ease, transform 1.2s ease; pointer-events: none; }
 
 /* ---------- le cockpit ---------- */
@@ -280,7 +291,7 @@ button { font: inherit; color: inherit; }
 .hpoi.home .tag { border-color: #6dffc4; font-size: 13px; } .hpoi.home::after { border-color: #6dffc4; }
 .hpoi.card .tag { border: 0; background: none; bottom: -8px; left: -6px; color: rgba(98, 230, 255, .6); font-size: 13px; padding: 0; }
 .hpoi.card::before, .hpoi.card::after { display: none; }
-.atl-panel { position: absolute; background: rgba(3, 16, 28, .62); border: 1px solid rgba(98, 230, 255, .28); backdrop-filter: blur(6px); clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px)); }
+.atl-panel { position: absolute; background: rgba(3, 16, 28, .82); border: 1px solid rgba(98, 230, 255, .28); clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px)); }
 .atl-panel h2 { margin: 0; font: 600 11px var(--f-display); letter-spacing: .28em; color: #62e6ff; text-transform: uppercase; display: flex; justify-content: space-between; padding: 9px 12px; border-bottom: 1px solid rgba(98, 230, 255, .28); }
 .atl-panel h2 span { color: rgba(98, 230, 255, .55); font-weight: 400; }
 .atl-grp { padding: 10px 12px; display: grid; gap: 6px; border-bottom: 1px solid rgba(98, 230, 255, .18); }
@@ -310,6 +321,14 @@ button { font: inherit; color: inherit; }
 .atl-stats { display: flex; gap: 22px; text-align: right; margin-left: auto; }
 .atl-stats div small { display: block; color: rgba(98, 230, 255, .55); letter-spacing: .2em; text-transform: uppercase; font-size: 9.5px; }
 .atl-stats div b { font: 500 16px var(--f-display); letter-spacing: .08em; font-variant-numeric: tabular-nums; }
+#atlAddrBtn { all: unset; cursor: pointer; padding: 8px 14px; border: 1px solid rgba(255, 178, 74, .55); font: 600 11px var(--f-display); letter-spacing: .22em; color: #ffb24a; background: rgba(3, 16, 28, .6); }
+#atlAddrBtn:hover, #atlAddrBtn.on { background: rgba(255, 178, 74, .16); }
+#atlAddr { right: 16px; top: 72px; width: 320px; z-index: 3; }
+#atlAddr[hidden], .abtn[hidden] { display: none; }
+#atlAddrIn { all: unset; box-sizing: border-box; width: 100%; padding: 9px 10px; border: 1px solid rgba(98, 230, 255, .45); background: rgba(0, 10, 20, .7); color: #fff; font: 12px var(--f-data); caret-color: #ffb24a; }
+#atlAddrIn:focus { border-color: #ffb24a; }
+#atlAddrMsg { margin: 2px 0 0; font-size: 10.5px; color: rgba(98, 230, 255, .65); }
+#atlAddrMsg.w { color: #ffb24a; } #atlAddrMsg.s { color: #6dffc4; }
 #atlClose { all: unset; cursor: pointer; padding: 8px 14px; border: 1px solid rgba(98, 230, 255, .45); font: 600 11px var(--f-display); letter-spacing: .22em; color: #62e6ff; background: rgba(3, 16, 28, .6); }
 #atlClose:hover { background: rgba(98, 230, 255, .15); }
 .atl-dossier { padding: 10px 12px 12px; display: grid; gap: 9px; }
@@ -337,6 +356,8 @@ button { font: inherit; color: inherit; }
   <canvas id="globe"></canvas>
   <canvas id="map"></canvas>
   <canvas id="fx"></canvas>
+  <div class="hexbg" aria-hidden="true"></div>
+  <div class="hudframe" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
   <div class="term" id="term"></div>
   <div class="hudr">
     <div>LAT <b id="hLat">--</b></div>
@@ -457,8 +478,19 @@ button { font: inherit; color: inherit; }
       <div><small>Soleil</small><b id="atlSun">—</b></div>
       <div><small>Objets</small><b id="atlObj">—</b></div>
     </div>
+    <button id="atlAddrBtn" title="Changer d'adresse ou explorer un autre lieu (A)">⌖ ADRESSE</button>
     <button id="atlClose" title="Retour au plan de travail (Échap)">✕ RETOUR</button>
   </header>
+  <form class="atl-panel" id="atlAddr" hidden autocomplete="off">
+    <h2>Lieu <span id="atlAddrNow">domicile</span></h2>
+    <div class="atl-grp">
+      <input id="atlAddrIn" placeholder="Adresse, ville, sommet… (ex. Chamonix)" aria-label="Adresse ou lieu">
+      <button class="abtn big" type="submit" id="atlAddrGo" title="Voir ce lieu sur la holo-table, sans changer ton domicile">Explorer ce lieu</button>
+      <button class="abtn" type="button" id="atlAddrHome" title="Enregistrer comme ton adresse (reste sur ton PC, dans .env)">Définir comme mon domicile</button>
+      <button class="abtn" type="button" id="atlAddrBack" hidden>⟲ Revenir à mon domicile</button>
+      <p id="atlAddrMsg">L'adresse reste sur ton PC. Explorer ne change pas ton domicile.</p>
+    </div>
+  </form>
   <aside class="atl-panel" id="atlLeft">
     <h2>Vision <span>modes</span></h2>
     <div class="atl-grp">
@@ -699,10 +731,10 @@ const SFX = (() => {
     if (ac || vol <= 0) return;
     try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
     const comp = ac.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 5; comp.connect(ac.destination);
-    out = ac.createGain(); out.gain.value = vol; out.connect(comp);
+    out = ac.createGain(); out.gain.value = vol * .5; out.connect(comp);   // plus doux qu'avant
     const len = ac.sampleRate * 2.6 | 0, ir = ac.createBuffer(2, len, ac.sampleRate);   // réverbe « grande salle »
     for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2); }
-    const conv = ac.createConvolver(); conv.buffer = ir; rev = ac.createGain(); rev.gain.value = .5; rev.connect(conv); conv.connect(out);
+    const conv = ac.createConvolver(); conv.buffer = ir; rev = ac.createGain(); rev.gain.value = .35; rev.connect(conv); conv.connect(out);
     nbuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate); const nd = nbuf.getChannelData(0);
     for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
     const wake = () => ac && ac.state !== "running" && ac.resume();
@@ -738,7 +770,7 @@ const SFX = (() => {
     for (const [type, fr, det] of [["sawtooth", 55, 0], ["sawtooth", 55, 9], ["sine", 27.5, 0], ["triangle", 110, -6]]) {
       const o = ac.createOscillator(); o.type = type; o.frequency.value = fr; o.detune.value = det; o.connect(fl); o.start(t0); oscs.push(o);
     }
-    gn.gain.setValueAtTime(0.0001, t0); gn.gain.exponentialRampToValueAtTime(.16, t0 + 1.2);
+    gn.gain.setValueAtTime(0.0001, t0); gn.gain.exponentialRampToValueAtTime(.09, t0 + 1.2);
     fl.connect(gn); gn.connect(bus(.25)); drone = { oscs, fl, gn };
     const s = ac.createBufferSource(), wf = ac.createBiquadFilter(), wg = ac.createGain();
     s.buffer = nbuf; s.loop = true; wf.type = "bandpass"; wf.Q.value = .9; wf.frequency.value = 400; wg.gain.value = 0;
@@ -756,7 +788,7 @@ const SFX = (() => {
     }
     if (wind) {
       wind.wf.frequency.setTargetAtTime(300 + 2600 * warp, now, .1);
-      wind.wg.gain.setTargetAtTime(t < T_LOCK ? .5 * warp : 0, now, .12);
+      wind.wg.gain.setTargetAtTime(t < T_LOCK ? .25 * warp : 0, now, .12);
     }
     if (t > 2.4 && t < T_LOCK && now >= nextBeep) {    // altimètre : bips de plus en plus rapprochés
       tone("sine", 1975, 1975, .05, .045, 0, .2);
@@ -767,7 +799,7 @@ const SFX = (() => {
     init, loops, update,
     powerUp() { tone("sine", 45, 190, 1.8, .55, 0, .25); tone("triangle", 180, 1100, 1.3, .1, .15, .6); noise("highpass", 600, 5000, .7, 1.5, .12, .1, .4, .6); },
     blip() { const fr = 1400 + Math.random() * 900; tone("square", fr, fr, .045, .035, 0, .45, 4000); tone("square", fr * 1.5, fr * 1.5, .04, .025, .06, .45, 4000); },
-    atmo() { noise("bandpass", 4200, 220, 1.1, 2.1, .7, 0, .3, .5); tone("sine", 75, 32, 1.9, .55, .2, .2); noise("lowpass", 900, 120, .8, 1.6, .35, .3, .2, .3); },
+    atmo() { noise("bandpass", 4200, 220, 1.1, 2.1, .35, 0, .3, .5); tone("sine", 75, 32, 1.9, .3, .2, .2); noise("lowpass", 900, 120, .8, 1.6, .18, .3, .2, .3); },
     mapIn() {
       for (let i = 0; i < 9; i++) tone("sine", 600 * Math.pow(1.19, i), 600 * Math.pow(1.19, i), .07, .06, i * .055, .6);
       noise("highpass", 3000, 9000, .5, .9, .1, 0, .6, .05); tone("sine", 140, 60, .6, .35, 0, .3);
@@ -775,7 +807,7 @@ const SFX = (() => {
     ping() { tone("sine", 2637, 2637, .35, .06, 0, .8); tone("sine", 3951, 3951, .25, .025, .04, .8); },
     servo() { tone("sawtooth", 95, 150, 1.5, .07, 0, .15, 700); tone("sawtooth", 96, 151, 1.5, .05, 0, .15, 700); noise("bandpass", 600, 900, 4, 1.4, .05, 0, .1, .3); },
     lock() {
-      tone("sine", 130, 36, 1.1, .95, 0, .3); noise("lowpass", 4000, 150, .7, .45, .55, 0, .3, .005);
+      tone("sine", 130, 36, 1.1, .5, 0, .3); noise("lowpass", 4000, 150, .7, .45, .25, 0, .3, .005);
       tone("triangle", 1318.5, 1318.5, 1.8, .16, .08, .75); tone("triangle", 1975.5, 1975.5, 2, .13, .2, .75);
       tone("sine", 2637, 2637, 2.4, .07, .34, .85); tone("sine", 659.25, 659.25, 2.2, .1, .08, .6);
     },
@@ -795,7 +827,7 @@ const CLOUD = (() => {                                 // nuage doux, pré-dessi
   const c = document.createElement("canvas"); c.width = c.height = 256; const x = c.getContext("2d");
   for (let i = 0; i < 26; i++) {
     const a = Math.random() * TAU, r = Math.random() * 70, X = 128 + Math.cos(a) * r, Y = 128 + Math.sin(a) * r * .6, R = 30 + Math.random() * 50;
-    const gr = x.createRadialGradient(X, Y, 0, X, Y, R); gr.addColorStop(0, "rgba(190,235,255,.20)"); gr.addColorStop(1, "rgba(190,235,255,0)");
+    const gr = x.createRadialGradient(X, Y, 0, X, Y, R); gr.addColorStop(0, "rgba(40,120,220,.16)"); gr.addColorStop(1, "rgba(40,120,220,0)");
     x.fillStyle = gr; x.fillRect(0, 0, 256, 256);
   }
   return c;
@@ -818,28 +850,33 @@ function drawStars(W, H, dt, rot, warp, alpha, px) {
     if (X < -50 || Y < -50 || X > W + 50 || Y > H + 50) continue;
     const a = alpha * s.b * clamp((1 - s.z) * 1.6, 0, 1), sz = (.6 + 1.8 * (1 - s.z)) * px;
     const col = s.h < .15 ? "255,214,170" : s.h < .5 ? "200,236,255" : "235,248,255";
-    const tail = warp * .09 + Math.abs(rot) * 0;
+    const tail = warp * .05;
     if (tail > .004) {
       const zt = Math.min(1.2, s.z + tail), X2 = cx + X0 / zt * F, Y2 = cy + s.y / zt * F;
-      g.strokeStyle = `rgba(${col},${a})`; g.lineWidth = sz; g.beginPath(); g.moveTo(X2, Y2); g.lineTo(X, Y); g.stroke();
+      g.strokeStyle = `rgba(110,215,255,${a * .7})`; g.lineWidth = sz * .7; g.beginPath(); g.moveTo(X2, Y2); g.lineTo(X, Y); g.stroke();
     } else { g.fillStyle = `rgba(${col},${a})`; g.fillRect(X - sz / 2, Y - sz / 2, sz, sz); }
   }
   g.restore();
 }
-function drawFlare(cx, cy, R, W, H, px, a) {           // lever de soleil derrière la Terre
+function drawFlare(cx, cy, R, W, H, px, a) {           // bouclier holographique autour de la Terre (plus de soleil blanc)
   if (a <= .01) return;
-  const sx = cx + R * .78, sy = cy - R * .66;
-  g.save(); g.globalCompositeOperation = "lighter"; g.globalAlpha = a;
-  let gr = g.createRadialGradient(sx, sy, 0, sx, sy, 160 * px);
-  gr.addColorStop(0, "rgba(255,255,255,.95)"); gr.addColorStop(.08, "rgba(190,240,255,.6)"); gr.addColorStop(1, "rgba(79,216,255,0)");
-  g.fillStyle = gr; g.beginPath(); g.arc(sx, sy, 160 * px, 0, TAU); g.fill();
-  g.save(); g.translate(sx, sy); g.scale(1, .025);         // traînée anamorphique
-  gr = g.createRadialGradient(0, 0, 0, 0, 0, W * .55); gr.addColorStop(0, "rgba(140,220,255,.7)"); gr.addColorStop(1, "rgba(79,216,255,0)");
-  g.fillStyle = gr; g.beginPath(); g.arc(0, 0, W * .55, 0, TAU); g.fill(); g.restore();
-  const dx = W / 2 - sx, dy = H / 2 - sy;                  // reflets de l'objectif
-  for (const [k, r, c] of [[.6, 26, "79,216,255,.18"], [1.25, 60, "120,160,255,.10"], [1.6, 14, "160,255,220,.25"], [2.1, 90, "79,216,255,.06"]]) {
-    g.fillStyle = `rgba(${c})`; g.beginPath(); g.arc(sx + dx * k, sy + dy * k, r * px, 0, TAU); g.fill();
+  const t = performance.now() / 1000;
+  g.save(); g.globalAlpha = a; g.lineCap = "butt";
+  [[1.09, 1.4, [3, 9], .26, .14], [1.15, 2.2, [26, 10, 4, 10], .34, -.09], [1.24, 1, [1, 5], .22, .05]].forEach(([k, w, dash, al, sp]) => {
+    g.strokeStyle = `rgba(79,216,255,${al})`; g.lineWidth = w * px; g.setLineDash(dash.map((d) => d * px));
+    g.lineDashOffset = -t * sp * 400 * px; g.beginPath(); g.arc(cx, cy, R * k, 0, TAU); g.stroke();
+  });
+  g.setLineDash([]);
+  for (let k = 0; k < 72; k++) {                         // graduations
+    const ang = k / 72 * TAU + t * .05, r1 = R * 1.19, r2 = r1 + (k % 6 ? 5 : 12) * px;
+    g.strokeStyle = `rgba(120,230,255,${k % 6 ? .18 : .45})`; g.lineWidth = px;
+    g.beginPath(); g.moveTo(cx + Math.cos(ang) * r1, cy + Math.sin(ang) * r1); g.lineTo(cx + Math.cos(ang) * r2, cy + Math.sin(ang) * r2); g.stroke();
   }
+  const sw = t * .9;                                     // arc de scan ambre qui tourne
+  g.strokeStyle = "rgba(255,182,72,.55)"; g.lineWidth = 2.4 * px; g.beginPath(); g.arc(cx, cy, R * 1.15, sw, sw + .5); g.stroke();
+  g.strokeStyle = "rgba(255,182,72,.25)"; g.beginPath(); g.arc(cx, cy, R * 1.15, sw + Math.PI, sw + Math.PI + .25); g.stroke();
+  g.font = `${10 * px}px ${FDATA()}`; g.fillStyle = "rgba(150,235,255,.7)"; g.textAlign = "center";
+  ["000", "090", "180", "270"].forEach((lab, k) => { const ang = k * Math.PI / 2 - Math.PI / 2 + t * .05; g.fillText(lab, cx + Math.cos(ang) * R * 1.3, cy + Math.sin(ang) * R * 1.3 + 4 * px); });
   g.restore();
 }
 function drawOrbits(cx, cy, R, t, px, a) {               // satellites en orbite
@@ -865,18 +902,25 @@ function drawAtmo(W, H, t, e, px) {                      // traversée des nuage
   const cx = W / 2, cy = H / 2, M = Math.hypot(W, H) * .6;
   g.save(); g.globalCompositeOperation = "lighter";
   const haze = g.createRadialGradient(cx, cy, 0, cx, cy, M);
-  haze.addColorStop(0, `rgba(120,210,255,${.22 * e})`); haze.addColorStop(.6, `rgba(40,120,255,${.10 * e})`); haze.addColorStop(1, "rgba(0,0,0,0)");
+  haze.addColorStop(0, `rgba(40,140,255,${.12 * e})`); haze.addColorStop(.6, `rgba(20,80,200,${.06 * e})`); haze.addColorStop(1, "rgba(0,0,0,0)");
   g.fillStyle = haze; g.fillRect(0, 0, W, H);
-  for (const p of PUFFS) {
+  for (const p of PUFFS) {                               // nuages : bleu sombre, discrets (plus de faisceaux blancs)
     const q = (t * .55 * p.sp + p.ph) % 1, r = M * q * q * 1.3, s = (80 + 900 * q * q) * p.s * px;
-    g.globalAlpha = Math.sin(Math.PI * q) * e * .5;
+    g.globalAlpha = Math.sin(Math.PI * q) * e * .22;
     g.save(); g.translate(cx + Math.cos(p.a) * r, cy + Math.sin(p.a) * r); g.rotate(p.a); g.scale(1 + 2.2 * q, .8);   // étirés par la vitesse
     g.drawImage(CLOUD, -s / 2, -s / 2, s, s); g.restore();
   }
-  g.globalAlpha = 1; g.lineCap = "round";
+  g.globalAlpha = 1;
+  for (let k = 0; k < 7; k++) {                          // tunnel d'hexagones holographiques qui défilent
+    const q = (t * .7 + k / 7) % 1, R2 = M * .08 + M * 1.1 * q * q, a = Math.sin(Math.PI * q) * e * .45;
+    g.strokeStyle = `rgba(79,216,255,${a})`; g.lineWidth = (1 + 2 * q) * px; g.beginPath();
+    for (let j = 0; j <= 6; j++) { const an = j * TAU / 6 + Math.PI / 6 + t * .15; j ? g.lineTo(cx + Math.cos(an) * R2, cy + Math.sin(an) * R2) : g.moveTo(cx + Math.cos(an) * R2, cy + Math.sin(an) * R2); }
+    g.stroke();
+  }
+  g.lineCap = "round";
   for (const s of STREAKS) {
     const q = (t * 1.6 + s.ph) % 1, r0 = M * q * q, r1 = r0 + M * s.l * (.3 + q);
-    g.strokeStyle = `rgba(190,240,255,${.55 * e * Math.sin(Math.PI * q)})`; g.lineWidth = s.w * px;
+    g.strokeStyle = `rgba(79,216,255,${.22 * e * Math.sin(Math.PI * q)})`; g.lineWidth = s.w * .6 * px;
     g.beginPath(); g.moveTo(cx + Math.cos(s.a) * r0, cy + Math.sin(s.a) * r0); g.lineTo(cx + Math.cos(s.a) * r1, cy + Math.sin(s.a) * r1); g.stroke();
   }
   g.restore();
@@ -888,7 +932,11 @@ let mapOK = false;
 function tile(z, x, y) {
   const n = 1 << z; x = ((x % n) + n) % n;
   const k = z + "/" + x + "/" + y;
-  if (!tiles.has(k)) { const im = new Image(); im.z = z; im.onload = () => holoQueue.push(im); im.src = `tuile/${k}.png`; tiles.set(k, im); }
+  if (!tiles.has(k)) {
+    const job = { z, ok: false };                      // conversion dans le worker : rien de lourd ici
+    if (window.HOLO && HOLO.workerTile && HOLO.workerTile(`tuile/${k}.png`, 256, 0, (bmp) => { if (bmp) { job.holo = bmp; job.ok = true; job.okAt = performance.now(); mapOK = true; } })) tiles.set(k, job);
+    else { const im = new Image(); im.z = z; im.onload = () => holoQueue.push(im); im.src = `tuile/${k}.png`; tiles.set(k, im); }
+  }
   return tiles.get(k);
 }
 const HOLO_COL = [[2, 14, 32, 215], [5, 52, 112, 235], [4, 46, 52, 225], [14, 78, 122, 245], [62, 176, 232, 235], [255, 166, 60, 245], [200, 244, 255, 255]];
@@ -1042,7 +1090,7 @@ function drawMap(t, zf, alpha, reveal, lockQ) {
     m.fillStyle = gm; m.fillRect(0, 0, W, H); m.restore();
     m.save(); m.globalCompositeOperation = "lighter";
     const gl = m.createLinearGradient(0, fy - 40 * px, 0, fy + 4 * px);
-    gl.addColorStop(0, "rgba(79,216,255,0)"); gl.addColorStop(.85, "rgba(79,216,255,.35)"); gl.addColorStop(1, "rgba(220,250,255,.95)");
+    gl.addColorStop(0, "rgba(79,216,255,0)"); gl.addColorStop(.85, "rgba(79,216,255,.22)"); gl.addColorStop(1, "rgba(120,230,255,.6)");
     m.fillStyle = gl; m.fillRect(0, fy - 40 * px, W, 44 * px); m.restore();
   }
   $("#osm").style.opacity = mapOK && LIVE ? .9 : 0;
@@ -1054,7 +1102,7 @@ function drawFx(t, o) {
   f.clearRect(0, 0, W, H);
   const { lock, done, tp, lonC, altKm, mapA } = o;
   const col = done ? "62,240,168" : "79,216,255";
-  f.save(); f.lineWidth = 1.5 * px; f.shadowColor = `rgb(${col})`; f.shadowBlur = 10 * px;
+  f.save(); f.lineWidth = 1.5 * px; f.shadowColor = `rgb(${col})`; f.shadowBlur = 0;
   // réticule (s'efface quand la carte s'incline : le sol prend le relais)
   const ra = 1 - .75 * tp, ring = (58 - 30 * lock) * px, spin = t * .9 * (1 - lock);
   f.strokeStyle = `rgba(${col},${.9 * ra})`;
@@ -1071,26 +1119,20 @@ function drawFx(t, o) {
   f.setLineDash([]); f.globalAlpha = 1;
   // crochets de verrouillage qui se referment
   const B = (240 - 170 * easeOut(lock, 3)) * px, L = 24 * px;
-  f.strokeStyle = `rgba(${col},${clamp((t - T_TILT) / .6, 0, 1)})`; f.lineWidth = 2 * px; f.shadowBlur = 12 * px;
+  f.strokeStyle = `rgba(${col},${clamp((t - T_TILT) / .6, 0, 1)})`; f.lineWidth = 2 * px; f.shadowBlur = 0;
   for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
     f.beginPath(); f.moveTo(cx + sx * B, cy + sy * (B - L)); f.lineTo(cx + sx * B, cy + sy * B); f.lineTo(cx + sx * (B - L), cy + sy * B); f.stroke();
   }
   f.restore();
-  // colonne de lumière sur ta position
+  // marqueur de ta position : anneaux holographiques qui montent (plus de faisceau blanc)
   if (t > T_LOCK - .15 && !holoOn) {
-    const q = clamp((t - T_LOCK + .15) / .7, 0, 1), h = H * .46 * easeOut(q, 3), pw = 26 * px;
-    f.save(); f.globalCompositeOperation = "lighter";
-    let gr = f.createLinearGradient(0, cy, 0, cy - h);
-    gr.addColorStop(0, "rgba(120,255,200,.55)"); gr.addColorStop(1, "rgba(62,240,168,0)");
-    f.fillStyle = gr; f.fillRect(cx - pw, cy - h, pw * 2, h);
-    gr = f.createLinearGradient(0, cy, 0, cy - h); gr.addColorStop(0, "rgba(235,255,245,1)"); gr.addColorStop(1, "rgba(160,255,220,0)");
-    f.fillStyle = gr; f.fillRect(cx - 1.5 * px, cy - h, 3 * px, h);
-    const bl = f.createRadialGradient(cx, cy, 0, cx, cy, 90 * px); bl.addColorStop(0, "rgba(160,255,220,.7)"); bl.addColorStop(1, "rgba(62,240,168,0)");
-    f.save(); f.translate(cx, cy); f.scale(1, .4 + .6 * (1 - tp)); f.fillStyle = bl; f.beginPath(); f.arc(0, 0, 90 * px, 0, TAU); f.fill(); f.restore();
-    for (let k = 0; k < 46; k++) {                       // particules qui montent
-      const sp = .5 + (k * 37 % 11) / 11, yy = ((t * 140 * sp + k * 53) % (h + 1)), xx = Math.sin(k * 12.9 + t * 2) * pw * .8;
-      f.fillStyle = `rgba(190,255,230,${.8 * (1 - yy / h)})`; const s = (1 + (k % 3)) * px; f.fillRect(cx + xx - s / 2, cy - yy, s, s);
+    const q = clamp((t - T_LOCK + .15) / .7, 0, 1);
+    f.save(); f.lineWidth = 1.5 * px;
+    for (let k = 0; k < 5; k++) {
+      const w = (t * .45 + k / 5) % 1, rr = (34 - 18 * w) * px * easeOut(q, 3), yy = cy - w * 160 * px;
+      f.strokeStyle = `rgba(62,240,168,${.6 * (1 - w) * q})`; f.beginPath(); f.ellipse(cx, yy, rr * 1.6, rr * .45 * (1 - .6 * tp) + rr * .3, 0, 0, TAU); f.stroke();
     }
+    f.strokeStyle = `rgba(62,240,168,${.35 * q})`; f.setLineDash([3 * px, 5 * px]); f.beginPath(); f.moveTo(cx, cy); f.lineTo(cx, cy - 170 * px * q); f.stroke();
     f.restore();
   }
   // règle des longitudes (en haut) et altimètre (à gauche)
@@ -1115,12 +1157,12 @@ function drawFx(t, o) {
     const Y = la(v); f.beginPath(); f.moveTo(ax, Y); f.lineTo(ax + 10 * px, Y); f.stroke(); f.fillText(lab, ax + 14 * px, Y + 3 * px);
   }
   for (let e = -1; e <= 4; e += .25) { const Y = la(Math.pow(10, e)); f.beginPath(); f.moveTo(ax, Y); f.lineTo(ax + 4 * px, Y); f.stroke(); }
-  const ya = la(altKm); f.fillStyle = `rgb(${col})`; f.shadowColor = `rgb(${col})`; f.shadowBlur = 8 * px;
+  const ya = la(altKm); f.fillStyle = `rgb(${col})`; f.shadowColor = `rgb(${col})`; f.shadowBlur = 0;
   f.beginPath(); f.moveTo(ax - 2 * px, ya); f.lineTo(ax - 12 * px, ya - 6 * px); f.lineTo(ax - 12 * px, ya + 6 * px); f.fill();
   f.restore();
   // éclairs : arrivée de la carte, verrouillage
   const fl = Math.max(.32 * Math.exp(-Math.max(0, t - T_MAP) * 7) * (t > T_MAP ? 1 : 0), t > T_LOCK ? .75 * Math.exp(-(t - T_LOCK) * 5) : 0);
-  if (fl > .01) { f.save(); f.globalCompositeOperation = "lighter"; f.fillStyle = `rgba(170,240,255,${fl})`; f.fillRect(0, 0, W, H); f.restore(); }
+  if (fl > .01) { f.save(); f.globalCompositeOperation = "lighter"; f.fillStyle = `rgba(40,150,255,${fl * .25})`; f.fillRect(0, 0, W, H); f.restore(); }
 }
 
 /* ---------- la séquence ---------- */
@@ -1129,8 +1171,16 @@ function cue(name, at, t, fn, always = false) {
   if (t >= at && !fired.has(name)) { fired.add(name); if (always || t - at < .6) fn(); }
 }
 const GLYPHS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#/<>Δ";
+// cadence régulière : 120 images/s maximum (un écran 240 Hz affiche chaque image 2 fois, sans à-coups)
+const FRAME_MS = 1000 / 120, clocks = { boot: 0, orb: 0 };
+const due = (k, now) => { if (now - clocks[k] < FRAME_MS - 2) return false; clocks[k] = now; return true; };
+const perfBoot = { n: 0, long: 0, worst: 0, last: 0 };
 function drawBoot() {
   const now = performance.now();                      // même horloge que skip() et finishBoot()
+  if (VUE && !bootDone && !bootStart) bootStart = now - T_END * 1000;   // exploration d'un lieu : pas de globe
+  if (!due("boot", now)) { if (!bootDone) requestAnimationFrame(drawBoot); return; }
+  if (perfBoot.last) { const d = now - perfBoot.last; perfBoot.n++; if (d > 50) perfBoot.long++; perfBoot.worst = Math.max(perfBoot.worst, d); }
+  perfBoot.last = now;
   if (!bootStart) bootStart = now;
   const t = (now - bootStart) / 1000, dt = clamp((now - (lastNow || now)) / 1000, 0, .05); lastNow = now;
   const W = gc.width, H = gc.height, px = W / Math.max(1, gc.clientWidth);
@@ -1213,10 +1263,11 @@ function setTarget() {
   $("#lockCoord").textContent = `CIBLE VERROUILLÉE · ${Math.abs(target.lat).toFixed(4)}°${target.lat >= 0 ? "N" : "S"}  ${Math.abs(target.lon).toFixed(4)}°${target.lon >= 0 ? "E" : "O"}`;
   makePois(); prefetch();
 }
-function sizeBoot() { sizeCanvas(gc); sizeCanvas(mc, 1.25); sizeCanvas(fc); }
+function sizeBoot() { sizeCanvas(gc, 1.5); sizeCanvas(mc, 1.25); sizeCanvas(fc, 1.5); }
 function startSequence() { fired = new Set(); lineShown = 0; lastNow = 0; SFX.init(S.sons); SFX.reset(); }
 function replayBoot() {                                // « ouvre le plan de travail » alors qu'il est déjà ouvert : on rejoue le globe
   if (!bootDone) return;
+  if (VUE) { location.href = location.pathname; return; }   // on quittait une exploration : retour au domicile
   if (window.HOLO && HOLO.ready && (Math.abs(HOLO.lat0 - (+(S.lieu || {}).lat || 0)) > .002 || Math.abs(HOLO.lon0 - (+(S.lieu || {}).lon || 0)) > .002)) {
     location.reload(); return;                          // nouvelle position : on reconstruit la holo-table
   }
@@ -1229,7 +1280,9 @@ function replayBoot() {                                // « ouvre le plan de tr
 }
 function finishBoot() {
   if (bootDone) return; bootDone = true;
-  report(`animation du globe terminée (${((performance.now() - bootStart) / 1000).toFixed(1)} s)`);
+  const dur = (performance.now() - bootStart) / 1000;
+  report(`animation du globe terminée (${dur.toFixed(1)} s, ${Math.round(perfBoot.n / Math.max(.1, dur))} images/s, ${perfBoot.long} à-coups > 50 ms, pire ${Math.round(perfBoot.worst)} ms)`);
+  Object.assign(perfBoot, { n: 0, long: 0, worst: 0, last: 0 });
   perfT = 0;                                           // la mesure de fluidité repart de zéro après le globe
   SFX.exit();
   if (holoOn) { holoOn = false; HOLO.bootEnd(); atlas.insertBefore(hw, atlas.firstChild); hw.style.opacity = 1; }
@@ -1320,7 +1373,7 @@ function watchPerf(now) {                              // trop lent ? on allège
 }
 function drawOrb(now) {
   requestAnimationFrame(drawOrb);
-  if (!bootDone) return;
+  if (!bootDone || !due("orb", now)) return;
   watchPerf(now);
   const t = (now - orbT0) / 1000, W = oc.width, cx = W / 2, cy = W / 2, R = W / 2, k = W / 1000;
   const mode = S.mode || "idle", [cr, cg, cb] = stateCol(mode), col = `rgb(${cr},${cg},${cb})`;
@@ -1573,6 +1626,9 @@ $("#close").addEventListener("click", () => { if (LIVE) send({ type: "fermer" })
 const atlas = $("#atlas"), hw = $("#holoWrap");
 let holoOn = false, pendingAtlas = false, holoSeq = null, tgtN = 1;
 const holoReady = () => !!(window.HOLO && HOLO.ready);
+const QS = new URLSearchParams(location.search);
+const VUE = (() => { const v = (QS.get("vue") || "").split(","); return v.length >= 2 && isFinite(+v[0]) && isFinite(+v[1]) ? { lat: +v[0], lon: +v[1], ville: decodeURIComponent(v.slice(2).join(",") || "Lieu exploré") } : null; })();
+if (QS.has("atlas")) pendingAtlas = true;                 // rechargée pour la holo-table : on y retourne directement
 function holoTileImg(z, x, y, o = {}) {
   return new Promise((ok) => { const im = new Image(); im.onload = () => { try { ok(holoTile(im, o.size || 256, o.dim || 0) || im); } catch (e) { ok(im); } }; im.onerror = () => ok(null); im.src = `tuile/${z}/${x}/${y}.png`; });
 }
@@ -1609,7 +1665,9 @@ function syncStats() {
   const m = S.meteo || {};
   $("#atlMeteo").textContent = m.temp != null ? `${m.temp} °C · ${m.vent ?? "?"} KM/H` : "—";
   $("#atlObj").textContent = `${HOLO.buildingCount} BÂT · ${HOLO.peaks.length} SOMMETS`;
-  $("#atlPlace").textContent = `${((S.lieu || {}).ville || "Domicile").toUpperCase()} · RELIEF RÉEL · OPENSTREETMAP`;
+  $("#atlPlace").textContent = `${(VUE ? VUE.ville : (S.lieu || {}).ville || "Domicile").toUpperCase()} · ${VUE ? "EXPLORATION" : "RELIEF RÉEL"} · OPENSTREETMAP`;
+  $("#atlAddrNow").textContent = VUE ? "exploration" : "domicile"; $("#atlAddrBack").hidden = !VUE;
+  if (VUE) $("#atlMeteo").textContent = "—";
 }
 function startHolo() {
   if (!LIVE || !window.HOLO || HOLO.loading || HOLO.failed || !(S.lieu && S.lieu.lat)) return;
@@ -1617,8 +1675,9 @@ function startHolo() {
   HOLO.say = atlasSay; HOLO.onTarget = showTarget; HOLO.onClose = closeAtlas; HOLO.onSun = syncSun;
   HOLO.onViewshed = (on) => $("#atlVS").classList.toggle("on", on);
   HOLO.onRoads = (on) => $("#atlRoads").classList.toggle("on", on);
-  HOLO.init({ lat: target.lat, lon: target.lon, ville: (S.lieu || {}).ville, canvas: $("#holo"), labels: $("#hlabels"),
-    meteo: S.meteo, tileImg: holoTileImg, report }).then((ok) => {
+  const at = VUE || { lat: target.lat, lon: target.lon, ville: (S.lieu || {}).ville };
+  HOLO.init({ lat: at.lat, lon: at.lon, ville: at.ville, canvas: $("#holo"), labels: $("#hlabels"), home: !VUE,
+    meteo: VUE ? null : S.meteo, tileImg: holoTileImg, report }).then((ok) => {
     if (!ok) return;
     HOLO.bindControls($("#holo")); syncSun(); report(`holo-table prête (${HOLO.buildingCount} bâtiments, ${HOLO.peaks.length} sommets)`);
     if (pendingAtlas && bootDone) openAtlas();
@@ -1638,8 +1697,10 @@ function closeAtlas() { if (atlas.hidden) return; atlas.hidden = true; if (windo
 function holoVoice(h) {
   if (!h || h.seq === holoSeq) return;
   const first = holoSeq === null; holoSeq = h.seq;
-  if (first && h.cmd !== "ouvrir") return;                  // ancienne commande déjà jouée
+  const fresh = h.t && Math.abs(Date.now() / 1000 - h.t) < 25;   // commande qui vient d'ouvrir la page
+  if (first && h.cmd !== "ouvrir" && (!fresh || (h.cmd === "explorer" && VUE))) return;   // ancienne commande déjà jouée
   if (h.cmd === "fermer") return closeAtlas();
+  if (h.cmd === "explorer" && h.arg) { if (holoReady() && bootDone) { openAtlas(); explorePlace(h.arg); } else setTimeout(() => explorePlace(h.arg), 4000); return; }
   openAtlas();
   if (h.cmd === "ouvrir") return;
   const run = () => HOLO.command(h.cmd === "mode" ? h.arg : `${h.cmd} ${h.arg || ""}`);
@@ -1647,6 +1708,32 @@ function holoVoice(h) {
 }
 document.querySelectorAll("[data-holo]").forEach((b) => b.addEventListener("click", openAtlas));
 $("#atlClose").addEventListener("click", closeAtlas);
+/* ---------- onglet « Adresse » : explorer un autre lieu, ou changer de domicile ---------- */
+const addrMsg = (t, c = "") => { const e = $("#atlAddrMsg"); e.textContent = t; e.className = c; };
+function toggleAddr(v) { const p = $("#atlAddr"); p.hidden = v === undefined ? !p.hidden : !v; $("#atlAddrBtn").classList.toggle("on", !p.hidden); if (!p.hidden) $("#atlAddrIn").focus(); }
+$("#atlAddrBtn").addEventListener("click", () => toggleAddr());
+async function geocode(q) {
+  const r = await fetch("action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "geocode", texte: q }) });
+  const j = JSON.parse((await r.json()).resultat || "{}"); return j.lat != null ? j : null;
+}
+async function explorePlace(q) {
+  if (!LIVE) { addrMsg("Aperçu : sur ton PC, la holo-table irait sur ce lieu.", "w"); return; }
+  addrMsg("Recherche du lieu…");
+  let p = null; try { p = await geocode(q); } catch (e) { p = null; }
+  if (!p) { addrMsg("Lieu introuvable. Essaie avec la ville ou le code postal.", "w"); return; }
+  addrMsg(`Cap sur ${p.ville || q}. Reconstruction du relief…`, "s"); report("holo-table : exploration de " + (p.ville || q));
+  location.href = location.pathname + "?vue=" + [p.lat.toFixed(5), p.lon.toFixed(5), encodeURIComponent(p.ville || q)].join(",") + "&atlas=1";
+}
+$("#atlAddr").addEventListener("submit", (e) => { e.preventDefault(); const v = $("#atlAddrIn").value.trim(); if (v) explorePlace(v); });
+$("#atlAddrHome").addEventListener("click", () => {
+  const v = $("#atlAddrIn").value.trim(); if (!v) { addrMsg("Écris d'abord ton adresse.", "w"); return; }
+  if (!LIVE) { addrMsg("Aperçu : sur ton PC, Jarvis enregistrerait cette adresse.", "w"); return; }
+  addrMsg("J'enregistre ton adresse et je recentre tout…", "s");
+  history.replaceState(null, "", location.pathname + "?atlas=1");     // après le rechargement : retour direct ici
+  if (VUE) { send({ type: "adresse", texte: v }).then(() => setTimeout(() => { location.href = location.pathname + "?atlas=1"; }, 2500)); }
+  else send({ type: "adresse", texte: v });
+});
+$("#atlAddrBack").addEventListener("click", () => { location.href = location.pathname + "?atlas=1"; });
 document.querySelectorAll("#atlLeft [data-v]").forEach((b) => b.addEventListener("click", () => {
   HOLO.setVision(+b.dataset.v); document.querySelectorAll("#atlLeft [data-v]").forEach((x) => x.classList.toggle("on", x === b)); }));
 $("#atlDrones").addEventListener("click", (e) => e.currentTarget.classList.toggle("on", HOLO.toggleDrones()));
@@ -1661,10 +1748,10 @@ $("#atlSunR").addEventListener("input", (e) => { HOLO.setSunHour(+e.target.value
 $("#atlSunNow").addEventListener("click", () => { HOLO.setSunNow(); syncSun(); HOLO.sun(); });
 $("#atlCmdRow").addEventListener("submit", (e) => { e.preventDefault(); const v = $("#atlCmd").value.trim(); if (!v) return; atlasSay("> " + v); $("#atlCmd").value = ""; HOLO.command(v); syncSun(); });
 addEventListener("keydown", (e) => {
-  if (atlas.hidden || e.target === $("#atlCmd")) return;
+  if (atlas.hidden || e.target.tagName === "INPUT") return;   // on tape une commande ou une adresse
   const k = e.key.toLowerCase(), map = { "1": () => $('#atlLeft [data-v="0"]').click(), "2": () => $('#atlLeft [data-v="1"]').click(),
     "3": () => $('#atlLeft [data-v="2"]').click(), s: () => $("#atlScan").click(), v: () => $("#atlFly").click(), d: () => $("#atlDrones").click(),
-    t: () => $("#atlSat").click(), n: () => $("#atlClouds").click(), c: () => $("#atlVS").click(), g: () => $("#atlRoads").click(), r: () => $("#atlHome").click(), escape: closeAtlas };
+    t: () => $("#atlSat").click(), n: () => $("#atlClouds").click(), c: () => $("#atlVS").click(), g: () => $("#atlRoads").click(), a: () => toggleAddr(), r: () => $("#atlHome").click(), escape: closeAtlas };
   if (map[k]) { e.preventDefault(); map[k](); }
 });
 

@@ -44,6 +44,14 @@ et donne les actions à faire (fichiers à lancer) clairement.
   (`computeViewshed`, 1 440 rayons, courbure de la Terre) : vert = visible, sombre = caché ; bouton/touche C, voix
   « champ de vision (depuis <lieu>) ». Ouverture à la voix tolérante (`HOLO_OPEN_RE` : halo/allô table, carte 3D,
   relief, hologramme, projection, mode Tony Stark, « montre-moi la vallée en 3D »...).
+  Onglet « ⌖ ADRESSE » (touche A) : explorer un lieu (`?vue=lat,lon,nom&atlas=1`, géocodage via l'action `geocode`,
+  `/zone` et `/routes` acceptent `?lat=&lon=`) ou le définir comme domicile (action `adresse`). Voix : `holo_table`
+  action `explorer`. Fluidité : tuiles converties dans `web/holo_worker.js` (Worker + OffscreenCanvas), grandes cartes
+  gardées dans `.cache/holotex/*.webp` (clé avec `TEX_V`, à incrémenter si le rendu des tuiles change), 120 images/s
+  max régulières (globe, sphère, holo), pas de `shadowBlur` plein écran, pixel ratio ≤ 1,5. Le journal indique
+  « animation du globe terminée (… images/s, … à-coups) » et « carte z13 relue du cache / calculée en … ms ».
+  Chargement sans faisceaux blancs : bouclier holo autour du globe, tunnel d'hexagones, anneaux verts à l'arrivée.
+  Sons du plan de travail moitié moins forts (défaut `JARVIS_PLAN_SONS` 40).
 - `vitrine_cs.py` + `vitrine_cs.html` + `skins_cs.json` — VITRINE CS2 (« lance mon fond d'écran ») : intro ouverture de
   caisse, skins chers qui défilent (inspection 3D souris, zoom, caisses, favoris, tirs dans le décor, bruitages WebAudio),
   pilotable à la voix (outil `fond_ecran`, `VITRINE_RE` / `VITRINE_CMDS`, `find_skin`). Images Steam téléchargées une
@@ -66,13 +74,19 @@ et donne les actions à faire (fichiers à lancer) clairement.
   CS2 via `steam://rungameid/730`, annonces vocales à chaque étape (outil `session_jeu` + voie express).
 - `mode_jeu.py` — mode jeu automatique (psutil) : décharge Ollama et Whisper GPU (Whisper « small » CPU pendant la
   partie), priorité basse, sphère ralentie, mesures GPU espacées (NVML au lieu de nvidia-smi dans `plan_de_travail.py`).
+- `accueil.py` — SCAN D'ARRIVÉE : après une absence (clavier/souris immobiles, `GetLastInputInfo`, 5 min par défaut),
+  au premier mouvement (écran déverrouillé, pas en jeu, mode caméra fermé, 10 min mini entre deux) ouvre
+  `camera.html?mode=accueil` au centre (visage seulement, pas d'enregistrement auto : `check_face(enroll=False)`),
+  animation « BON RETOUR, KLYPP » puis la page se ferme (événement `fin`). Voix : outil `camera` action `scan_arrivee`.
 - `local_music.py` — lecteur MCI (dossier `musique/`). `camera_mode.py` + `camera.html` — contrôle à la main.
 - `hud.py` — ancienne intro (secours).
 
 ## Réglages utiles (`.env`)
 `JARVIS_IA` (hybride | local | local_seul | gemini), `JARVIS_ADRESSE` / `JARVIS_VILLE`, `JARVIS_INTERRUPTION`,
 `JARVIS_PLAN_APPS`, `JARVIS_MUSIQUE_DECALAGE`, `JARVIS_AUTO_AMELIORATION`, `JARVIS_DOSSIERS_AUTORISES`,
-`JARVIS_BIP` (1 = bip quand il écoute), `JARVIS_PLAN_SONS` (bruitages du globe, 0–100), `JARVIS_SPHERE_MOTEUR` (cpu = ancienne sphère), `JARVIS_MODE_JEU` (non = désactivé), `JARVIS_VITRINE_ECRAN` (gauche = 2e écran), `JARVIS_JEUX` (jeux en plus), `JARVIS_FACEIT_AC` (chemin de faceitclient.exe si besoin), `JARVIS_FACEIT_ATTENTE` (s avant CS2), `JARVIS_VOSK` (petit par défaut ; grand = modèle plus précis mais lourd, à charger longtemps).
+`JARVIS_BIP` (1 = bip quand il écoute), `JARVIS_PLAN_SONS` (bruitages du globe, 0–100), `JARVIS_SPHERE_MOTEUR` (cpu = ancienne sphère), `JARVIS_MODE_JEU` (non = désactivé), `JARVIS_VITRINE_ECRAN` (gauche = 2e écran), `JARVIS_JEUX` (jeux en plus), `JARVIS_FACEIT_AC` (chemin de faceitclient.exe si besoin), `JARVIS_FACEIT_ATTENTE` (s avant CS2), `JARVIS_VOSK` (petit par défaut ; grand = modèle plus précis mais lourd, à charger longtemps), `JARVIS_ACCUEIL` (non = pas de scan d'arrivée), `JARVIS_ACCUEIL_ABSENCE` (minutes).
+
+Veille / extinction / redémarrage : `do_systeme` exige une confirmation donnée lors d'un échange PRÉCÉDENT (`pending_sys`, `turn`) — ne jamais affaiblir.
 
 ## Où on en est (à vérifier sur le PC de Klypp)
 - **Sphère OpenGL** (`orb_gpu.py`) : jamais testée sur un vrai Windows. Vérifier dans `jarvis.log` la ligne

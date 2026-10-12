@@ -19,7 +19,8 @@ video { display: none; }
 // =============================================================== réglages
 const Q = new URLSearchParams(location.search);
 const USER = (Q.get("user") || "KLYPP").toUpperCase();
-const SCAN_S = 2.6;                                         // durée de l'analyse du visage
+const ACCUEIL = Q.get("mode") === "accueil";                // scan d'arrivée : reconnaissance + accueil, puis fermeture
+const SCAN_S = ACCUEIL ? 1.6 : 2.6;                         // durée de l'analyse du visage
 const ZONE = { x0: .2, x1: .8, y0: .18, y1: .72 };           // zone de la caméra = tout l'écran
 const C = { void: "#02060b", ion: "#3fd8ff", ice: "#d9f6ff", ember: "#ffad42", alert: "#ff4d5e", steel: "#2b5a6e", dim: "#6f98aa" };
 const TAU = Math.PI * 2;
@@ -105,8 +106,10 @@ async function loadModels(delegate = "GPU") {
     try { return await Task.createFromOptions(files, { baseOptions: { modelAssetPath: url, delegate }, runningMode: "VIDEO", ...extra }); }
     catch (e) { return await Task.createFromOptions(files, { baseOptions: { modelAssetPath: url, delegate: "CPU" }, runningMode: "VIDEO", ...extra }); }
   };
+  const faceP = make(vision.FaceLandmarker, "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task", { numFaces: 1 });
+  if (ACCUEIL) { faceLM = await faceP; return; }               // l'accueil n'a pas besoin des mains
   [faceLM, handLM] = await Promise.all([
-    make(vision.FaceLandmarker, "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task", { numFaces: 1 }),
+    faceP,
     make(vision.HandLandmarker, "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task", { numHands: 2, minHandDetectionConfidence: .6, minTrackingConfidence: .5 }),
   ]);
 }
@@ -204,7 +207,9 @@ function loop(now) {
 
 function update(now) {
   const el = (now - phaseT) / 1000;
-  if (phase === "boot" && bootOk && el > 2.1) { setPhase("scan"); status = "PLACE TON VISAGE FACE À LA CAMÉRA"; }
+  if (phase === "boot" && bootOk && el > (ACCUEIL ? 1.1 : 2.1)) { setPhase("scan"); status = ACCUEIL ? "IDENTIFICATION" : "PLACE TON VISAGE FACE À LA CAMÉRA"; }
+  if (ACCUEIL && phase === "scan" && el > 12 && verdict === null) { finish("absent"); return; }   // personne devant l'écran
+  if (ACCUEIL && (phase === "boot" && el > 20)) { finish("erreur"); return; }
   if (phase === "scan") {
     const f = lastFace;
     if (f) {
@@ -216,16 +221,25 @@ function update(now) {
     if (scanProg >= 1 && verdict === null) {
       verdict = "pending"; grabFace(f);
       const sig = avg(faceSigs.length >= 5 ? faceSigs.slice(-30) : [signature(f)]);
-      post("face", { sig }).then(r => {
+      post("face", { sig, enroll: !ACCUEIL }).then(r => {
         verdict = r.ok === undefined ? { ok: true, score: 1 } : r;
-        if (verdict.ok) { status = "ACCÈS AUTORISÉ"; setPhase("granted"); } else { status = "ACCÈS REFUSÉ · NOUVEL ESSAI"; setPhase("denied"); }
-        post("event", { t: "auth", ok: verdict.ok, enrolled: !!verdict.enrolled, score: verdict.score });
+        if (verdict.ok || verdict.noprofile) { status = verdict.ok ? "ACCÈS AUTORISÉ" : "PROFIL NON ENREGISTRÉ"; setPhase("granted"); }
+        else { status = ACCUEIL ? "VISAGE NON RECONNU" : "ACCÈS REFUSÉ · NOUVEL ESSAI"; setPhase("denied"); }
+        post("event", { t: "auth", ok: verdict.ok, enrolled: !!verdict.enrolled, noprofile: !!verdict.noprofile, score: verdict.score, accueil: ACCUEIL });
       });
     }
   }
-  if (phase === "granted" && el > 3) { setPhase("control"); }
-  if (phase === "denied" && el > 4) { scanProg = 0; faceSigs = []; verdict = null; setPhase("scan"); }
+  if (ACCUEIL) { if ((phase === "granted" && el > 5.2) || (phase === "denied" && el > 3.5)) finish("ok"); }
+  else {
+    if (phase === "granted" && el > 3) { setPhase("control"); }
+    if (phase === "denied" && el > 4) { scanProg = 0; faceSigs = []; verdict = null; setPhase("scan"); }
+  }
   sparks = sparks.filter(s => (s.life -= 1 / 60) > 0); sparks.forEach(s => { s.x += s.vx; s.y += s.vy; s.vx *= .94; s.vy *= .94; });
+}
+let finished = false, fadeT = 0;
+function finish(why) {                                        // fin de l'accueil : fondu, caméra coupée, fenêtre fermée
+  if (finished) return; finished = true; fadeT = performance.now();
+  setTimeout(() => { stream?.getTracks().forEach(t => t.stop()); post("event", { t: "fin", why }); }, 700);
 }
 function burst(lm, col) {
   const r = videoRect(), p = P(lm[8], r);
@@ -255,10 +269,30 @@ function draw(now) {
   if (phase === "boot") drawBoot(t);
   if (phase === "scan" || phase === "granted" || phase === "denied") drawFace(lastFace, r, t);
   if (phase === "granted" || phase === "denied") drawCard(t);
+  if (ACCUEIL && phase === "granted") drawWelcome(t);
   if (phase === "control") { drawZone(r); hands.forEach((h, i) => drawHand(h, r, t, i)); drawZoom(r); drawMinimap(t); drawLegend(); }
   sparks.forEach(s => { ctx.fillStyle = rgba(s.col, s.life / .6); ctx.fillRect(s.x - 1.2, s.y - 1.2, 2.4, 2.4); });
   drawFrame(t);
   glitch(now);
+  if (finished) { ctx.fillStyle = `rgba(2,6,11,${clamp((now - fadeT) / 650)})`; ctx.fillRect(0, 0, W, H); }
+}
+
+function drawWelcome(t) {                                       // accueil : anneaux qui s'ouvrent + message de bienvenue
+  const el = (performance.now() - phaseT) / 1000, k = out3(clamp(el / .9)), cx = W / 2, cy = H * .5;
+  ctx.save(); ctx.fillStyle = `rgba(2,6,11,${.55 * k})`; ctx.fillRect(0, 0, W, H); ctx.restore();
+  for (let i = 0; i < 4; i++) {
+    const q = clamp(el * .9 - i * .12), r = 40 + q * (90 + i * 46);
+    ctx.save(); ctx.strokeStyle = rgba(i % 2 ? C.ion : C.ember, (1 - q * .6) * .8); ctx.lineWidth = i ? 1.2 : 2.4; ctx.shadowColor = C.ion; ctx.shadowBlur = 12;
+    const a = t * (i % 2 ? -.8 : 1.1) + i; ctx.beginPath(); ctx.arc(cx, cy, r, a, a + TAU * (.55 + .1 * i)); ctx.stroke(); ctx.restore();
+  }
+  for (let k2 = 0; k2 < 60; k2++) { const a = k2 / 60 * TAU + t * .2, r1 = 150 * k, r2 = r1 + (k2 % 5 ? 5 : 12); line(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1, cx + Math.cos(a) * r2, cy + Math.sin(a) * r2, C.ion, 1, .35 * k); }
+  const known = verdict && verdict.ok;
+  const hello = new Date().getHours() >= 18 || new Date().getHours() < 5 ? "BONSOIR" : "BONJOUR";
+  text(known ? `BON RETOUR, ${USER}` : hello, cx, cy - 8, 30, C.ice, { align: "center", font: "display", weight: 700, spacing: 4, alpha: k, glow: 18 });
+  text(new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }).toUpperCase() + "  ·  " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+    cx, cy + 30, 12, C.ion, { align: "center", spacing: 3, alpha: k });
+  const lines = known ? ["IDENTITÉ CONFIRMÉE", "SYSTÈMES EN LIGNE", "JARVIS À VOTRE SERVICE"] : ["PROFIL NON ENREGISTRÉ", "DIS « JARVIS, ACTIVE LA CAMÉRA »", "POUR ENREGISTRER TON VISAGE"];
+  lines.forEach((l, i) => { const a = clamp((el - .8 - i * .35) / .3); if (a > 0) text(`> ${l}`, cx, cy + 70 + i * 18, 10, i ? C.dim : C.ember, { align: "center", spacing: 2, alpha: a * k }); });
 }
 
 function drawHexGrid(t) {

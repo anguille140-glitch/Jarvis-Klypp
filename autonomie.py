@@ -56,7 +56,7 @@ AUTO_FORBIDDEN = re.compile(r"\bctypes\b|\bsubprocess\b|os\.system|os\.startfile
 DANGER = re.compile(
     r"os\.remove|os\.unlink|\.unlink\(|rmtree|os\.rmdir|\.rmdir\(|shutil\.move|os\.rename|\.rename\(|\.replace\(\s*['\"]?[A-Za-z]:|"
     r"send2trash|winreg|reg\s+(add|delete)|\bdel\s+/|\brd\s+/s|Remove-Item|shutdown|format\s+[a-z]:|smtplib|"
-    r"\.post\(|method\s*=\s*['\"]POST|sendmail|webhook|bcdedit|vssadmin|cipher\s+/w|taskkill|Stop-Process",
+    r"\.post\(|method\s*=\s*['\"]POST|sendmail|webhook|bcdedit|vssadmin|cipher\s+/w|taskkill|Stop-Process|SetSuspendState|powrprof|Suspend-Computer|Stop-Computer|Restart-Computer",
     re.I)
 
 

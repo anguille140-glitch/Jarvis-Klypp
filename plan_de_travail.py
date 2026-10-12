@@ -23,6 +23,7 @@ import json
 import logging
 import math
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -324,11 +325,11 @@ def _geocode_address(addr: str) -> dict:
 
 
 def sound_volume() -> int:
-    """Volume des bruitages du plan de travail : JARVIS_PLAN_SONS de 0 (coupé) à 100. 60 par défaut."""
+    """Volume des bruitages du plan de travail : JARVIS_PLAN_SONS de 0 (coupé) à 100. 40 par défaut."""
     try:
-        return max(0, min(100, int(float(env_setting("JARVIS_PLAN_SONS") or 60))))
+        return max(0, min(100, int(float(env_setting("JARVIS_PLAN_SONS") or 40))))
     except ValueError:
-        return 60
+        return 40
 
 
 def env_setting(name: str) -> str:
@@ -822,13 +823,14 @@ class Workspace:
         f.write_bytes(data)
         return data
 
-    def zone(self) -> dict:
+    def zone(self, lat: float | None = None, lon: float | None = None) -> dict:
         """Bâtiments, sommets, rivières et remontées autour de ta position (gardés sur le PC)."""
-        lieu = self.state.get("lieu") or {}
-        try:
-            lat, lon = float(lieu["lat"]), float(lieu["lon"])
-        except (KeyError, TypeError, ValueError):
-            return {"etat": "position inconnue"}
+        if lat is None or lon is None:                    # sinon : un lieu exploré sur la holo-table
+            lieu = self.state.get("lieu") or {}
+            try:
+                lat, lon = float(lieu["lat"]), float(lieu["lon"])
+            except (KeyError, TypeError, ValueError):
+                return {"etat": "position inconnue"}
         f = CACHE / f"zone_{lat:.3f}_{lon:.3f}.json"
         if f.is_file():
             try:
@@ -853,13 +855,21 @@ class Workspace:
         threading.Thread(target=fetch, daemon=True).start()
         return {"etat": "en cours"}
 
-    def routes(self) -> dict:
+    @staticmethod
+    def holotex_file(path: str) -> Path | None:
+        name = path[len("holotex/"):]
+        if not re.fullmatch(r"[0-9a-z_.m]{8,80}\.webp", name) or ".." in name:
+            return None
+        return CACHE / "holotex" / name
+
+    def routes(self, lat: float | None = None, lon: float | None = None) -> dict:
         """Routes, rues, chemins et sentiers autour de ta position (gardés sur le PC)."""
-        lieu = self.state.get("lieu") or {}
-        try:
-            lat, lon = float(lieu["lat"]), float(lieu["lon"])
-        except (KeyError, TypeError, ValueError):
-            return {"etat": "position inconnue"}
+        if lat is None or lon is None:                    # sinon : un lieu exploré sur la holo-table
+            lieu = self.state.get("lieu") or {}
+            try:
+                lat, lon = float(lieu["lat"]), float(lieu["lon"])
+            except (KeyError, TypeError, ValueError):
+                return {"etat": "position inconnue"}
         f = CACHE / f"routes_{lat:.3f}_{lon:.3f}.json"
         if f.is_file():
             try:
@@ -886,7 +896,7 @@ class Workspace:
     def holo(self, cmd: str, arg: str = "") -> str:
         """Commande vocale pour la holo-table (ouvre le plan de travail si besoin)."""
         self.holo_seq += 1
-        self.state["holo"] = {"seq": self.holo_seq, "cmd": cmd, "arg": arg}
+        self.state["holo"] = {"seq": self.holo_seq, "cmd": cmd, "arg": arg, "t": time.time()}
         if self.proc is None or self.proc.poll() is not None:
             out = self.open()
             if out.startswith("ÉCHEC"):
@@ -907,6 +917,12 @@ class Workspace:
             else:
                 note("jarvis", "Je n'ai pas trouvé cette adresse. Essaie avec le code postal et la ville.")
             return out
+        if t == "geocode" and a.get("texte"):          # onglet « Adresse » de la holo-table : explorer un lieu
+            try:
+                lieu = _geocode_address(str(a["texte"])[:200])
+                return json.dumps({k: lieu.get(k) for k in ("ville", "pays", "lat", "lon")}, ensure_ascii=False)
+            except Exception:  # noqa: BLE001
+                return "{}"
         if t == "fermer":
             threading.Thread(target=self.close, daemon=True).start()
             return "ok"
@@ -962,11 +978,23 @@ class Workspace:
                 if p.startswith("relief/"):
                     data = ws.relief(p)
                     return self._send(200, data, "image/png") if data else self._send(404, b"", "text/plain")
+                qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                try:
+                    qlat, qlon = float(qs["lat"][0]), float(qs["lon"][0])
+                    if not (-85 < qlat < 85 and -180 <= qlon <= 180):
+                        raise ValueError
+                except (KeyError, ValueError, IndexError):
+                    qlat = qlon = None
                 if p == "zone":
-                    return self._send(200, json.dumps(ws.zone(), ensure_ascii=False).encode("utf-8"),
+                    return self._send(200, json.dumps(ws.zone(qlat, qlon), ensure_ascii=False).encode("utf-8"),
                                       "application/json")
+                if p.startswith("holotex/"):                # carte de la holo-table déjà calculée (cache)
+                    f = ws.holotex_file(p)
+                    if f and f.is_file():
+                        return self._send(200, f.read_bytes(), "image/webp")
+                    return self._send(404, b"", "text/plain")
                 if p == "routes":
-                    return self._send(200, json.dumps(ws.routes(), ensure_ascii=False).encode("utf-8"),
+                    return self._send(200, json.dumps(ws.routes(qlat, qlon), ensure_ascii=False).encode("utf-8"),
                                       "application/json")
                 if p.startswith("web/"):
                     f = (BASE / p).resolve()
@@ -981,7 +1009,17 @@ class Workspace:
                 return self._send(404, b"", "text/plain")
 
             def do_POST(self):  # noqa: N802
-                if self._path() != "action":
+                p = self._path() or ""
+                if p.startswith("holotex/"):                # la page envoie la carte calculée pour la garder
+                    f, n = ws.holotex_file(p), int(self.headers.get("Content-Length") or 0)
+                    if f and 0 < n <= 40_000_000:
+                        data = self.rfile.read(n)
+                        if data[:4] == b"RIFF":
+                            f.parent.mkdir(parents=True, exist_ok=True)
+                            f.write_bytes(data)
+                            return self._send(200, b"ok", "text/plain")
+                    return self._send(400, b"", "text/plain")
+                if p != "action":
                     return self._send(404, b"", "text/plain")
                 try:
                     body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 20000)))

@@ -112,12 +112,14 @@ class Mouse:
 
 
 # ---------------------------------------------------------------- visage
-def check_face(sig: list[float]) -> dict:
-    """Compare l'empreinte du visage à celle enregistrée (la 1re fois : enregistrement)."""
+def check_face(sig: list[float], enroll: bool = True) -> dict:
+    """Compare l'empreinte du visage à celle enregistrée (la 1re fois : enregistrement, sauf pour l'accueil)."""
     try:
         sig = [float(x) for x in sig]
     except (TypeError, ValueError):
         return {"ok": False, "score": 0}
+    if not FACE_FILE.is_file() and not enroll:
+        return {"ok": False, "score": 0, "noprofile": True}
     if not FACE_FILE.is_file():
         FACE_FILE.parent.mkdir(parents=True, exist_ok=True)
         FACE_FILE.write_text(json.dumps({"sig": sig}), encoding="utf-8")
@@ -126,7 +128,7 @@ def check_face(sig: list[float]) -> dict:
     ref = json.loads(FACE_FILE.read_text(encoding="utf-8")).get("sig") or []
     if len(ref) != len(sig):
         FACE_FILE.unlink(missing_ok=True)
-        return check_face(sig)
+        return check_face(sig, enroll)
     diff = sum(abs(a - b) / max(1e-6, abs(b)) for a, b in zip(sig, ref)) / len(ref)
     tol = float(_env("JARVIS_VISAGE_TOLERANCE", "0.09"))
     score = max(0.0, 1.0 - diff / (2 * tol))
@@ -151,9 +153,11 @@ def _browser() -> str | None:
 
 
 class CameraMode:
-    def __init__(self, say=None, user: str = "Klypp") -> None:
+    def __init__(self, say=None, user: str = "Klypp", mode: str = "controle", on_welcome=None) -> None:
         self.say = say or (lambda _t: None)
         self.user = user
+        self.mode = mode                                  # « controle » (gestes) ou « accueil » (scan d'arrivée)
+        self.on_welcome = on_welcome                      # accueil : phrase de bienvenue (fournie par Jarvis)
         self.server: http.server.ThreadingHTTPServer | None = None
         self.proc: subprocess.Popen | None = None
         self.mouse: Mouse | None = None
@@ -196,7 +200,7 @@ class CameraMode:
                     if path.endswith("/cmd"):
                         me._command(data)
                     elif path.endswith("/face"):
-                        out = check_face(data.get("sig") or [])
+                        out = check_face(data.get("sig") or [], bool(data.get("enroll", True)))
                     elif path.endswith("/event"):
                         me._event(data)
                 except Exception:  # noqa: BLE001
@@ -287,6 +291,21 @@ class CameraMode:
             m.zoom(int(d.get("n", 0)))
 
     def _event(self, d: dict) -> None:
+        if self.mode == "accueil":
+            if d.get("t") == "auth":
+                if d.get("ok"):
+                    msg = self.on_welcome() if self.on_welcome else f"Bon retour, {self.user}."
+                elif d.get("noprofile"):
+                    msg = "Bon retour. Je n'ai pas encore ton visage : dis « Jarvis, active la caméra » pour l'enregistrer."
+                else:
+                    msg = "Visage non reconnu."
+                log.info("Scan d'arrivée : %s", "reconnu" if d.get("ok") else "sans profil" if d.get("noprofile") else "refusé")
+                threading.Thread(target=self.say, args=(msg,), daemon=True).start()
+            elif d.get("t") == "fin":
+                threading.Thread(target=self.stop, daemon=True).start()
+            elif d.get("t") == "error":
+                log.warning("Scan d'arrivée : %s", d.get("msg"))
+            return
         if d.get("t") == "auth":
             if d.get("ok"):
                 msg = ("Profil enregistré. Contrôle gestuel activé, monsieur." if d.get("enrolled")
@@ -306,13 +325,15 @@ class CameraMode:
         exe = _browser()
         if not exe:
             return "ÉCHEC : il faut Chrome ou Edge pour le mode caméra."
-        self.mouse = Mouse()
+        self.mouse = Mouse() if self.mode != "accueil" else None
         port = self._serve()
         l, t, r, b = _main_screen()
         x, y = r - PANEL_W - 24, b - PANEL_H - 70                 # coin en bas à droite de l'écran principal
+        if self.mode == "accueil":                                 # accueil : au centre de l'écran
+            x, y = (l + r - PANEL_W) // 2, (t + b - PANEL_H) // 2
         profile = BASE / ".cache" / "camera_navigateur"
         profile.mkdir(parents=True, exist_ok=True)
-        url = f"http://127.0.0.1:{port}/camera.html?" + urllib.parse.urlencode({"user": self.user})
+        url = f"http://127.0.0.1:{port}/camera.html?" + urllib.parse.urlencode({"user": self.user, "mode": self.mode})
         args = [exe, f"--user-data-dir={profile}", "--no-first-run", "--no-default-browser-check",
                 "--use-fake-ui-for-media-stream",                  # autorise la caméra sans fenêtre de demande
                 "--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding",
@@ -327,6 +348,10 @@ class CameraMode:
         self.active = True
         threading.Thread(target=self._style_window, args=(x, y), daemon=True).start()
         threading.Thread(target=self._watchdog, daemon=True).start()
+        if self.mode == "accueil":                                 # filet de sécurité : jamais plus de 30 s
+            threading.Timer(30, lambda: self.active and self.stop()).start()
+            log.info("Scan d'arrivée lancé.")
+            return "Scan d'arrivée lancé."
         log.info("Mode caméra lancé.")
         return "Mode caméra lancé : scan du visage en cours."
 

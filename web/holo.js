@@ -88,28 +88,59 @@ function slopeDeg(x, n) {
 }
 
 // Carte holographique drapée sur le relief. ext : demi-côté (km). Les tuiles sont converties en 512 px (contours fins).
+// Le calcul se fait dans un « worker » (en parallèle, l'animation reste fluide) et le résultat est gardé sur le PC :
+// les fois suivantes, la carte est relue d'un coup. Renvoie une texture three.js.
+const TEX_V = 3;                                     // à changer si le rendu des tuiles change (vide le cache)
+let WK = null, wkId = 0; const wkCb = new Map();
+function worker() {
+  if (WK === null) {
+    try { WK = new Worker("web/holo_worker.js?v=" + TEX_V); WK.onmessage = (e) => { const cb = wkCb.get(e.data.id); if (cb) cb(e.data); }; }
+    catch (e) { WK = false; }
+  }
+  return WK;
+}
+H.worker = worker;
+H.workerTile = function (url, size, dim, done) {       // utilisé aussi par la carte plate du globe
+  const w = worker(); if (!w) return false;
+  const id = ++wkId; wkCb.set(id, (d) => { wkCb.delete(id); done(d.bmp); });
+  w.postMessage({ type: "tile", id, url: new URL(url, location.href).href, size, dim }); return true;
+};
 async function buildTexture(tileFn, z, SIZE, ext) {
-  const cv = document.createElement("canvas"); cv.width = cv.height = SIZE;
-  const c = cv.getContext("2d");
-  c.fillStyle = "rgb(2,12,26)"; c.fillRect(0, 0, SIZE, SIZE); c.imageSmoothingQuality = "high";
   const latN = H.lat0 + ext / H.KN, latS = H.lat0 - ext / H.KN, lonW = H.lon0 - ext / H.KX, lonE = H.lon0 + ext / H.KX;
   const tx0 = Math.floor(mx(lonW, z) / 256), tx1 = Math.floor(mx(lonE, z) / 256), ty0 = Math.floor(my(latN, z) / 256), ty1 = Math.floor(my(latS, z) / 256);
   const px = (x) => (x + ext) / (2 * ext) * SIZE, py = (n) => (ext - n) / (2 * ext) * SIZE;
   const list = [];
-  for (let tx = tx0; tx <= tx1; tx++) for (let ty = ty0; ty <= ty1; ty++) list.push([tx, ty]);
+  for (let tx = tx0; tx <= tx1; tx++) for (let ty = ty0; ty <= ty1; ty++) {
+    const [x0, n0] = toXN(tileLat(ty, z), tileLon(tx, z)), [x1, n1] = toXN(tileLat(ty + 1, z), tileLon(tx + 1, z));
+    list.push([tx, ty, px(x0), py(n0), px(x1) - px(x0) + .6, py(n1) - py(n0) + .6]);
+  }
+  const w = worker();
+  if (w) {
+    const key = `${H.lat0.toFixed(4)}_${H.lon0.toFixed(4)}_z${z}_${SIZE}_${ext}_v${TEX_V}`.replace(/-/g, "m");
+    const bmp = await new Promise((ok) => {
+      const id = ++wkId;
+      wkCb.set(id, (d) => { if (d.progress != null) return; wkCb.delete(id);
+        if (H.opts.report) H.opts.report(`holo-table : carte z${z} ${d.cached ? "relue du cache" : "calculée"} en ${Math.round(d.ms)} ms${d.fail ? ` (${d.fail} tuiles manquantes)` : ""}`);
+        ok(d.bmp); });
+      w.postMessage({ type: "texture", id, size: SIZE, cache: new URL(`holotex/${key}.webp`, location.href).href,
+        tiles: list.map(([tx, ty, dx, dy, dw, dh]) => [new URL(`tuile/${z}/${tx}/${ty}.png`, location.href).href, dx, dy, dw, dh]) });
+    });
+    if (bmp) { const t = new THREE.Texture(bmp); t.flipY = false; t.needsUpdate = true; return t; }
+  }
+  // secours (navigateur sans worker) : calcul ici, tuile par tuile
+  const cv = document.createElement("canvas"); cv.width = cv.height = SIZE;
+  const c = cv.getContext("2d");
+  c.fillStyle = "rgb(2,12,26)"; c.fillRect(0, 0, SIZE, SIZE); c.imageSmoothingQuality = "high";
   let i = 0;
-  const worker = async () => {                       // 6 à la fois, en laissant respirer l'animation entre deux tuiles
+  const run = async () => {
     while (i < list.length) {
-      const [tx, ty] = list[i++], img = await tileFn(z, tx, ty, { size: 512, dim: 1 });
-      if (img) {
-        const [x0, n0] = toXN(tileLat(ty, z), tileLon(tx, z)), [x1, n1] = toXN(tileLat(ty + 1, z), tileLon(tx + 1, z));
-        c.drawImage(img, px(x0), py(n0), px(x1) - px(x0) + .6, py(n1) - py(n0) + .6);
-      }
+      const [tx, ty, dx, dy, dw, dh] = list[i++], img = await tileFn(z, tx, ty, { size: 512, dim: 1 });
+      if (img) c.drawImage(img, dx, dy, dw, dh);
       await new Promise((r) => setTimeout(r, 0));
     }
   };
-  await Promise.all(Array.from({ length: 6 }, worker));
-  return cv;
+  await Promise.all(Array.from({ length: 6 }, run));
+  return new THREE.CanvasTexture(cv);
 }
 
 /* ---------- soleil réel ---------- */
@@ -126,19 +157,18 @@ function sunPos(date, lat, lon) {          // azimut / hauteur (degrés), formul
 }
 
 /* ---------- scène ---------- */
-function buildScene(texCanvas, zone, texDCanvas) {
+function buildScene(tex, zone, texD) {
   const T = THREE, U = {
     uTime: { value: 0 }, uTex: { value: null }, uReveal: { value: 0 }, uScanR: { value: -1 }, uScanC: { value: new T.Vector2() },
     uTarget: { value: new T.Vector2(999, 999) }, uSun: { value: new T.Vector3(0, 1, 0) }, uSunI: { value: 1 }, uNight: { value: 0 },
     uBaseT: { value: 10 }, uHRef: { value: H.hRef }, uHMin: { value: H.hMin }, uExag: { value: EXAG }, uThermMix: { value: 0 },
     uXMix: { value: 0 }, uRise: { value: 0 }, uSnow: { value: 2300 },
-    uTexD: { value: null }, uDetE: { value: DET_E }, uDetOn: { value: texDCanvas ? 1 : 0 }, uPx: { value: .001 },
+    uTexD: { value: null }, uDetE: { value: DET_E }, uDetOn: { value: texD ? 1 : 0 }, uPx: { value: .001 },
     uVS: { value: null }, uVSOn: { value: 0 }, uVSR: { value: 0 }, uVSC: { value: new T.Vector2() },
   };
   H.U = U;
-  const tex = new T.CanvasTexture(texCanvas);
   tex.anisotropy = 16; tex.minFilter = T.LinearMipmapLinearFilter; U.uTex.value = tex;
-  const texD = new T.CanvasTexture(texDCanvas || document.createElement("canvas"));
+  texD = texD || new T.CanvasTexture(document.createElement("canvas"));
   texD.anisotropy = 16; texD.minFilter = T.LinearMipmapLinearFilter; U.uTexD.value = texD;
   const vsT = new T.DataTexture(new Uint8Array(VS_N * VS_N), VS_N, VS_N, T.LuminanceFormat);
   vsT.magFilter = vsT.minFilter = T.LinearFilter; U.uVS.value = vsT; H.vsTex = vsT;
@@ -202,7 +232,7 @@ function buildScene(texCanvas, zone, texDCanvas) {
         if(uScanR>0.){ float d=length(vW.xz-uScanC); float band=exp(-pow((d-uScanR)*4.,2.));
           float trail=smoothstep(uScanR-3.,uScanR,d)*step(d,uScanR); float fade=1.-smoothstep(12.,18.,uScanR);
           col+=vec3(.35,1.,.85)*(band*1.5+trail*.2*(minor+major))*fade; }
-        col+=vec3(.5,1.,1.)*exp(-pow((r-uReveal)*2.5,2.))*1.4;
+        col+=vec3(.15,.6,1.)*exp(-pow((r-uReveal)*2.5,2.))*.55;
         float dt=length(vW.xz-uTarget);
         col+=vec3(1.,.7,.3)*exp(-pow((dt-.32-.04*sin(uTime*3.))*24.,2.))*1.1;
         col+=vec3(1.,.7,.3)*exp(-pow((dt-.62)*50.,2.))*.5*step(.5,fract(atan(vW.z-uTarget.y,vW.x-uTarget.x)*6./3.14159+uTime*.2));
@@ -243,11 +273,11 @@ function buildScene(texCanvas, zone, texDCanvas) {
   /* domicile : faisceau + anneaux */
   const hy = yOf(H.hRef);
   const beamGrp = new T.Group(); beamGrp.position.set(0, hy, 0); scene.add(beamGrp); H.beam = beamGrp;
-  const beam = new T.Mesh(new T.CylinderGeometry(.06, .06, 7, 24, 1, true), new T.ShaderMaterial({ uniforms: U, transparent: true, depthWrite: false,
+  const beam = new T.Mesh(new T.CylinderGeometry(.025, .025, 5, 12, 1, true), new T.ShaderMaterial({ uniforms: U, transparent: true, depthWrite: false,
     blending: T.AdditiveBlending, side: T.DoubleSide,
     vertexShader: `varying vec2 vU; void main(){ vU=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
-    fragmentShader: `uniform float uTime; varying vec2 vU; void main(){ float a=pow(1.-vU.y,1.6)*(.55+.45*step(.5,fract(vU.y*30.-uTime*1.5))); gl_FragColor=vec4(vec3(.5,1.,.85)*a,1.); }` }));
-  beam.position.y = 3.5; beamGrp.add(beam);
+    fragmentShader: `uniform float uTime; varying vec2 vU; void main(){ float a=pow(1.-vU.y,2.2)*step(.55,fract(vU.y*30.-uTime*1.5))*.35; gl_FragColor=vec4(vec3(.3,.9,1.)*a,1.); }` }));
+  beam.position.y = 2.5; beamGrp.add(beam);
   const ringMat = new T.MeshBasicMaterial({ color: 0x6dffc4, transparent: true, opacity: .9, side: T.DoubleSide, blending: T.AdditiveBlending, depthWrite: false });
   H.homeRings = [0, 1, 2].map((i) => { const r = new T.Mesh(new T.RingGeometry(.16 + i * .1, .175 + i * .1, 64, 1, 0, Math.PI * (1.2 + i * .25)), ringMat); r.rotation.x = -Math.PI / 2; r.position.y = .04 + i * .05; beamGrp.add(r); return r; });
   beamGrp.visible = false;
@@ -260,7 +290,7 @@ function buildScene(texCanvas, zone, texDCanvas) {
   buildAtmos();
   /* lumières de rendu */
   H.renderer = new T.WebGLRenderer({ canvas: H.opts.canvas, antialias: true, alpha: true, powerPreference: "high-performance" });
-  H.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+  H.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.5));
   H.renderer.setClearColor(0x01060c, 1);
   H.camera = new T.PerspectiveCamera(42, 1, .01, 300);
   try {
@@ -270,6 +300,7 @@ function buildScene(texCanvas, zone, texDCanvas) {
     }
   } catch (e) { H.composer = null; }
   resize();
+  if (H.renderer.initTexture) { H.renderer.initTexture(tex); H.renderer.initTexture(texD); }   // envoi à la carte graphique tout de suite
 }
 
 function buildBuildings(zone) {
@@ -367,7 +398,7 @@ function buildLines(zone) {
 }
 function buildFixedLabels() {
   const T = THREE;
-  H.homeLabel = addLabel(new T.Vector3(0, yOf(H.hRef) + .05, 0), `${(H.opts.ville || "Domicile").toUpperCase()}<small>DOMICILE · ${fmtAlt(H.hRef)}</small>`, "home");
+  H.homeLabel = addLabel(new T.Vector3(0, yOf(H.hRef) + .05, 0), `${(H.opts.ville || "Domicile").toUpperCase()}<small>${H.opts.home === false ? "CENTRE" : "DOMICILE"} · ${fmtAlt(H.hRef)}</small>`, "home");
   [["N", 0, -R_TABLE - 1.2], ["E", R_TABLE + 1.2, 0], ["S", 0, R_TABLE + 1.2], ["O", -R_TABLE - 1.2, 0]].forEach((c) => addLabel(new T.Vector3(c[1], 0, c[2]), c[0], "card"));
 }
 
@@ -588,9 +619,12 @@ function home() { return { tx: 0, ty: yOf(H.hRef), tz: 0 }; }
 
 /* ---------- animation ---------- */
 let last = 0, raf = 0, fly = null, scanT = -1, lockT = -1;
+let lastDraw = 0;
 function frame(now) {
   raf = requestAnimationFrame(frame);
   if (!H.active) return;
+  if (now - lastDraw < 1000 / 120 - 2 && !H.drag) return;    // 120 images/s max, régulières (sauf pendant un glisser)
+  lastDraw = now;
   const dt = Math.min(.05, (now - (last || now)) / 1000); last = now;
   const t = now / 1000, U = H.U;
   U.uTime.value = t;
@@ -659,14 +693,15 @@ H.init = async function (opts) {
     try {
       for (const f of LIBS) if (!(f === "three.min.js" && window.THREE)) await loadScript("web/three/" + f);
       const zoneP = (async () => { for (let i = 0; i < 40; i++) {      // les données OSM arrivent parfois après
-        try { const z = await (await fetch("zone", { cache: "no-store" })).json(); if (z.etat === "ok") return z; } catch (e) { /* on réessaie */ }
+        try { const z = await (await fetch(`zone?lat=${H.lat0}&lon=${H.lon0}`, { cache: "no-store" })).json(); if (z.etat === "ok") return z; } catch (e) { /* on réessaie */ }
         await new Promise((r) => setTimeout(r, i < 3 ? 1500 : 4000)); if (H.ready && i > 3) return null; } return null; })();
       await loadDEM();
       const routesP = (async () => { for (let i = 0; i < 40; i++) {
-        try { const z = await (await fetch("routes", { cache: "no-store" })).json(); if (z.etat === "ok") return z; } catch (e) { /* on réessaie */ }
+        try { const z = await (await fetch(`routes?lat=${H.lat0}&lon=${H.lon0}`, { cache: "no-store" })).json(); if (z.etat === "ok") return z; } catch (e) { /* on réessaie */ }
         await new Promise((r) => setTimeout(r, i < 3 ? 2000 : 5000)); } return null; })();
       const [tex, texD] = await Promise.all([buildTexture(opts.tileImg, MAP_Z, 4096, EXT), buildTexture(opts.tileImg, DET_Z, 4096, DET_E)]);
       const zone = await Promise.race([zoneP, new Promise((r) => setTimeout(() => r(null), 4000))]);
+      await new Promise((r) => setTimeout(r, 0));
       buildScene(tex, zone, texD);
       routesP.then((r) => { if (r && r.routes) { buildRoads(r.routes); if (H.active && H.mode === "atlas") say(`Réseau routier chargé : ${H.roadKm.toFixed(0)} km de routes et sentiers.`, "s"); } });
       H.zoneLate = zone ? null : zoneP;
