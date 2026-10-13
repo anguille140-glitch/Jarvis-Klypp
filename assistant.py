@@ -43,9 +43,12 @@ BASE = Path(__file__).resolve().parent
 DEBUG = (os.environ.get("JARVIS_DEBUG") or "").strip().lower() in ("1", "true", "yes", "on")
 
 VOSK_RATE = 16000
-FOLLOWUP_S = 7.0          # temps pour enchaîner sans redire « Jarvis »
-LISTEN_TIMEOUT_S = 8.0    # après « Jarvis » seul : temps pour dire la demande
-MAX_UTTERANCE_S = 15.0    # durée max d'une phrase envoyée à Gemini
+# Il n'écoute QUE quand on dit « Jarvis » (Klypp parle sur Discord juste après : rien ne doit être capté).
+# JARVIS_SUITE=5 dans .env : redonne 5 s pour enchaîner sans redire « Jarvis » (0 par défaut = désactivé).
+FOLLOWUP_S = max(0.0, float((os.environ.get("JARVIS_SUITE") or "0").strip().replace(",", ".") or 0))
+LISTEN_TIMEOUT_S = 3.0    # après « Jarvis » seul (ou après ta dernière parole) : 3 s de silence et il arrête d'écouter
+MAX_UTTERANCE_S = 9.0     # durée max d'une demande (après, il arrête d'écouter même si tu continues de parler)
+REQUEST_STALE_S = 1.6     # demande commencée : plus aucun nouveau mot compris pendant ce temps -> fin de l'écoute
 DEFAULT_WAKE = "jarvis,jarvisse,jarvi,djarvis,charvis,garvis,javis,jarvice"
 
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -1257,7 +1260,7 @@ class Actions:
             if not ok:
                 self.pending_sys = (action, self.turn, time.monotonic())
                 quoi = {"veille": "mettre le PC en veille", "eteindre": "éteindre le PC", "redemarrer": "redémarrer le PC"}[action]
-                return (f"CONFIRMATION REQUISE : demande « Tu veux vraiment {quoi} ? » et attends la réponse. "
+                return (f"CONFIRMATION REQUISE : demande « Tu veux vraiment {quoi} ? Dis : Jarvis, oui. » et attends la réponse. "
                         "Si oui : systeme avec confirme=true. Sinon, ne fais rien.")
             self.pending_sys = None
             log.info("Système : %s confirmé par l'utilisateur.", action)
@@ -1332,7 +1335,7 @@ class Actions:
     def do_executer_code(self, objectif: str, confirme: bool = False) -> str:
         if self.tainted and not confirme:                # protection contre les pages web piégées
             return ("CONFIRMATION REQUISE : tu as lu internet pendant cette demande ; par sécurité, demande en une "
-                    "phrase « je lance le programme ? » (dis ce qu'il va faire). Si oui : executer_code avec confirme=true.")
+                    "phrase « je lance le programme ? Dis : Jarvis, oui. » (dis ce qu'il va faire). Si oui : executer_code avec confirme=true.")
         return self.auto.run_code(self.gemini, objectif, confirmed=bool(confirme))
 
     def do_competence(self, action: str, nom: str = "", besoin: str = "", confirme: bool = False) -> str:
@@ -2401,6 +2404,7 @@ def is_wake(text: str, words: set[str]) -> tuple[bool, str]:
 
 WAKE_SURE = 0.86       # au-dessus : on est sûr qu'on a dit « Jarvis »
 WAKE_MAYBE = 0.68      # entre les deux : on demande à Gemini de vérifier (il peut ignorer)
+WAKE_LISTEN = float(os.environ.get("JARVIS_REVEIL_SEUIL") or 0.8)   # score mini pour se réveiller (sans musique)
 BARGE_SCORE = 0.9      # pour couper Jarvis pendant qu'il parle, il faut un « Jarvis » bien net
 
 
@@ -2569,7 +2573,10 @@ class Ear:
                 return "stop", 1.0
             if text:
                 sc, _ = wake_score(text, words)
-                if sc >= WAKE_MAYBE:
+                # seulement « Jarvis » bien entendu (pas un mot qui y ressemble dans une discussion Discord) ;
+                # avec de la musique le mot est moins net, on reste un peu plus tolérant
+                need = WAKE_MAYBE if _music_playing() else WAKE_LISTEN
+                if sc >= need:
                     return "jarvis", sc
             if deadline is not None:                          # temps d'enchaînement : toute parole compte
                 speech_run = speech_run + 1 if speech else 0
@@ -2587,6 +2594,7 @@ class Ear:
         heard_final, partial = "", ""
         start = time.monotonic()
         silence, has_speech, speech_chunks = 0.0, False, 0
+        last_heard, last_new = "", time.monotonic()
         while True:
             pcm, clap = self._read_chunk(time.monotonic() + 1.0)
             if pcm is None or clap:
@@ -2610,6 +2618,8 @@ class Ear:
                 speech_chunks += 1
             else:
                 silence += self.CHUNK_S
+            if heard != last_heard:
+                last_heard, last_new = heard, time.monotonic()
             # une demande a commencé : des mots après « Jarvis », ou assez de parole (mots que Vosk ne connaît pas)
             has_request = len(rest.split()) >= 1 or speech_chunks >= (8 if mode == "jarvis" else 3)
             elapsed = time.monotonic() - start
@@ -2619,7 +2629,10 @@ class Ear:
                 break
             if elapsed >= MAX_UTTERANCE_S:
                 break
-            if final and has_request and text and silence >= 0.2:   # Vosk a vu la fin (utile avec de la musique)
+            if final and rest.split() and text:               # Vosk a vu la fin de ta phrase : on coupe tout de suite
+                break                                         # (sinon il écoutait ta discussion Discord qui suit)
+            # du bruit / des voix en fond (Discord, vidéo) sans nouveau mot pour Jarvis : la demande est finie
+            if has_request and rest.split() and time.monotonic() - last_new >= REQUEST_STALE_S:
                 break
         self.rec.Reset()
         # on retire le silence de la fin
@@ -3041,4 +3054,6 @@ def run(device: int, rate: int, user: str = "Monsieur", clap_factory=None, rms=N
             status("idle")
             ear.mute.clear()
             ear.reset()
-            followup_until = time.monotonic() + FOLLOWUP_S if result["answered"] else 0.0
+            followup_until = time.monotonic() + FOLLOWUP_S if (result["answered"] and FOLLOWUP_S > 0) else 0.0
+            if not followup_until:
+                log.info("Micro en veille : dis « Jarvis » pour une nouvelle demande.")

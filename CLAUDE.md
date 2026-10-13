@@ -29,6 +29,10 @@ et donne les actions à faire (fichiers à lancer) clairement.
   (`accueil.start(on_recognized=…)` dans `wait_for_launch`). Arrêt : `is_stop` (« fin de programme », « au revoir /
   bonne nuit Jarvis », « Jarvis éteins-toi »… ; en sommeil `strict=True` : seulement « fin de programme ») ;
   `_shutdown` joue l'animation de sortie (`intro.html?mode=sortie`, `frameOutro`) via `intro_web.WebIntro`.
+- ÉCOUTE : Jarvis n'écoute qu'après « Jarvis » bien entendu (`WAKE_LISTEN` 0,8, réglable `JARVIS_REVEIL_SEUIL` ;
+  `WAKE_MAYBE` seulement si sa musique joue). Une demande s'arrête dès que Vosk voit la fin de la phrase, ou si plus
+  aucun nouveau mot n'est compris pendant `REQUEST_STALE_S` (1,6 s, voix Discord en fond), 9 s max ; « Jarvis » seul
+  puis rien : 3 s. Pas d'enchaînement sans « Jarvis » (sauf si `JARVIS_SUITE` est mis exprès).
 - `superviseur.py` — fait tourner Jarvis caché et le relance s'il s'arrête (installé par `installer_demarrage.bat`).
 - `assistant.py` — le cœur : `Voice` (ElevenLabs / Piper / Windows, interruption quand on dit « Jarvis »),
   `Gemini` (REST, modèles de secours), `Actions` (tous les outils `do_*`), `Brain` (voie express sans IA + boucle
@@ -98,9 +102,11 @@ et donne les actions à faire (fichiers à lancer) clairement.
   cube de données CSS 3D + laser → surcharge → explosion (onde, flash, débris `CFX`) → carrousel holographique courbe
   (`place(x)`, rayon 1050 px, faisceau laser) → la carte gagnante sort, se désintègre → matérialisation du skin
   ligne par ligne (`#revImg` clip-path, aberration RGB, ondes, nom « déchiffré » `decode`). Images : compteur « n/93 »,
-  25 s max. `finish` attend `GL_READY` (4 s max). Skins = rendus officiels Steam en HOLOGRAMME volumétrique
-  (`analyse` + `build` dans `vitrine3d.js` : faces shader + 12 tranches additives) — pas de vrais modèles 3D (assets
-  Valve). `V.show` ignore une image arrivée en retard (`showSeq`). Peinture satinée (peu de métal) pour garder les couleurs. Scripts `web/` chargés avec `?v=VER`
+  25 s max. `finish` attend `GL_READY` (4 s max). Skins = VRAIS SOLIDES 3D (Klypp a refusé l'hologramme 2D) :
+  `analyse` trouve la silhouette (marching squares `contours`, `simplify`, trous rattachés), `build` l'extrude
+  (`ExtrudeGeometry`, biseau arrondi 4 segments, épaisseur par catégorie dans `LOOK`), UV projetées de face (peinture
+  exacte sur les 2 faces, couleur du bord qui déborde sur les tranches), `autoSmooth` (normales lissées sauf angles
+  vifs), carte de normales (bords arrondis + relief de la peinture). Pas les modèles de Valve (inaccessibles). `V.show` ignore une image arrivée en retard (`showSeq`). Peinture satinée (peu de métal) pour garder les couleurs. Scripts `web/` chargés avec `?v=VER`
   (constante dans `vitrine_cs.html`) : l'incrémenter à chaque modif de `web/` (sinon Chrome garde l'ancien fichier).
 - `session_jeu.py` — « lance-moi une session CS » : FACEIT AC (élévation UAC, ou tâche planifiée sans confirmation) puis
   CS2 via `steam://rungameid/730`, annonces vocales à chaque étape (outil `session_jeu` + voie express).
