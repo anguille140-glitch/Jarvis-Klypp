@@ -903,7 +903,8 @@ TOOLS = [{"functionDeclarations": [
         "nom d'un sommet / lieu, ou « maison ») ; drones ; satellite ; nuages ; meteo ; soleil (valeur : heure, ex. 18, "
         "ou « maintenant ») ; recentrer ; champ_vision (ce qu'on voit depuis la maison, valeur : un lieu pour voir depuis "
         "ce lieu, « off » pour masquer) ; routes (valeur : affiche / cache) ; explorer (valeur : un lieu, ex. « Chamonix » : la table montre ce lieu sans changer le domicile). Effet immédiat à l'écran. Toute demande de "
-        "« carte 3D », « relief », « hologramme », « projection », « mode Tony Stark » = ouvrir.",
+        "« carte 3D », « relief », « hologramme », « projection », « mode Tony Stark » = ouvrir. ATTENTION : « plan de "
+        "travail » tout seul n'est PAS la holo-table (utilise l'outil plan_de_travail).",
         {"action": _p("action", enum=["ouvrir", "fermer", "mode", "scan", "survol", "cible", "drones", "satellite",
                                       "nuages", "meteo", "soleil", "recentrer", "champ_vision", "routes", "explorer"]),
          "valeur": _p("détail (mode, lieu ou heure)")}, ["action"]),

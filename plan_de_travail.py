@@ -325,11 +325,11 @@ def _geocode_address(addr: str) -> dict:
 
 
 def sound_volume() -> int:
-    """Volume des bruitages du plan de travail : JARVIS_PLAN_SONS de 0 (coupé) à 100. 40 par défaut."""
+    """Volume des bruitages du plan de travail : JARVIS_PLAN_SONS de 0 (coupé) à 100. 30 par défaut."""
     try:
-        return max(0, min(100, int(float(env_setting("JARVIS_PLAN_SONS") or 40))))
+        return max(0, min(100, int(float(env_setting("JARVIS_PLAN_SONS") or 30))))
     except ValueError:
-        return 40
+        return 30
 
 
 def env_setting(name: str) -> str:
@@ -445,6 +445,26 @@ def weather(lat: float, lon: float) -> dict:
 # Holo-table : vrai relief, bâtiments, sommets, rivières, remontées mécaniques (OpenStreetMap)
 # ============================================================================
 OVERPASS = "https://overpass-api.de/api/interpreter"
+OVERPASS_MIRRORS = [OVERPASS, "https://overpass.private.coffee/api/interpreter",
+                    "https://overpass.kumi.systems/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"]
+_OVERPASS_LOCK = threading.Lock()                       # une seule demande à la fois (sinon le serveur refuse : 429)
+
+
+def _overpass(q: str, timeout: int = 120) -> dict:
+    """Interroge OpenStreetMap (Overpass) en essayant plusieurs serveurs si le premier est saturé."""
+    last: Exception | None = None
+    with _OVERPASS_LOCK:
+        for i, url in enumerate(OVERPASS_MIRRORS):
+            try:
+                req = urllib.request.Request(url, data=urllib.parse.urlencode({"data": q}).encode(),
+                                             headers={"User-Agent": "Jarvis-Klypp/1.0 (assistant personnel, usage privé)"})
+                with urllib.request.urlopen(req, timeout=timeout) as r:
+                    return json.loads(r.read().decode("utf-8"))
+            except Exception as e:  # noqa: BLE001
+                last = e
+                log.info("Holo-table : serveur OpenStreetMap %d indisponible (%s), essai suivant.", i + 1, e)
+                time.sleep(2)
+    raise last or RuntimeError("Overpass indisponible")
 
 
 def _height_m(tags: dict) -> float:
@@ -470,10 +490,7 @@ def fetch_zone(lat: float, lon: float) -> dict:
          f"(way[\"waterway\"=\"river\"](around:9000,{lat},{lon}););out tags geom;"
          f"(way[\"aerialway\"~\"cable_car|gondola|chair_lift|mixed_lift\"](around:16000,{lat},{lon}););out tags geom;"
          f"(node[\"natural\"~\"peak|volcano\"][\"name\"](around:16000,{lat},{lon}););out;")
-    req = urllib.request.Request(OVERPASS, data=urllib.parse.urlencode({"data": q}).encode(),
-                                 headers={"User-Agent": "Jarvis-Klypp/1.0 (assistant personnel, usage privé)"})
-    with urllib.request.urlopen(req, timeout=90) as r:
-        j = json.loads(r.read().decode("utf-8"))
+    j = _overpass(q, 90)
     out: dict = {"batiments": [], "rivieres": [], "remontees": [], "sommets": []}
     rnd = lambda v: round(v, 6)  # noqa: E731
     for e in j.get("elements", []):
@@ -526,10 +543,7 @@ def fetch_routes(lat: float, lon: float) -> dict:
          f"(way[\"highway\"~\"^(motorway|trunk|primary|secondary|tertiary)(_link)?$\"](around:16000,{a}););out tags geom;"
          f"(way[\"highway\"~\"^(unclassified|residential|living_street|pedestrian)$\"](around:6000,{a}););out tags geom;"
          f"(way[\"highway\"~\"^(track|path|footway|bridleway|steps)$\"](around:8000,{a}););out tags geom;")
-    req = urllib.request.Request(OVERPASS, data=urllib.parse.urlencode({"data": q}).encode(),
-                                 headers={"User-Agent": "Jarvis-Klypp/1.0 (assistant personnel, usage privé)"})
-    with urllib.request.urlopen(req, timeout=120) as r:
-        j = json.loads(r.read().decode("utf-8"))
+    j = _overpass(q, 120)
     routes = []
     for e in j.get("elements", []):
         t = e.get("tags") or {}
@@ -850,7 +864,7 @@ class Workspace:
                              len(data["batiments"]), len(data["sommets"]), len(data["rivieres"]), len(data["remontees"]))
                 except Exception as e:  # noqa: BLE001
                     log.info("Holo-table : données OpenStreetMap indisponibles (%s)", e)
-                    time.sleep(60)                         # on réessaiera plus tard
+                    time.sleep(20)                         # on réessaiera plus tard
 
         threading.Thread(target=fetch, daemon=True).start()
         return {"etat": "en cours"}
@@ -888,7 +902,7 @@ class Workspace:
                     log.info("Holo-table : %d routes et chemins autour de toi.", len(data["routes"]))
                 except Exception as e:  # noqa: BLE001
                     log.info("Holo-table : routes OpenStreetMap indisponibles (%s)", e)
-                    time.sleep(60)
+                    time.sleep(20)
 
         threading.Thread(target=fetch, daemon=True).start()
         return {"etat": "en cours"}

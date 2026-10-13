@@ -231,7 +231,7 @@ function buildScene(tex, zone, texD) {
         }
         if(uScanR>0.){ float d=length(vW.xz-uScanC); float band=exp(-pow((d-uScanR)*4.,2.));
           float trail=smoothstep(uScanR-3.,uScanR,d)*step(d,uScanR); float fade=1.-smoothstep(12.,18.,uScanR);
-          col+=vec3(.35,1.,.85)*(band*1.5+trail*.2*(minor+major))*fade; }
+          col+=vec3(.2,.75,1.)*(band*.6+trail*.12*(minor+major))*fade; }
         col+=vec3(.15,.6,1.)*exp(-pow((r-uReveal)*2.5,2.))*.55;
         float dt=length(vW.xz-uTarget);
         col+=vec3(1.,.7,.3)*exp(-pow((dt-.32-.04*sin(uTime*3.))*24.,2.))*1.1;
@@ -258,7 +258,7 @@ function buildScene(tex, zone, texD) {
     fragmentShader: `uniform float uTime,uReveal; varying vec2 vU; void main(){ float a=pow(1.-vU.y,3.)*.2;
       float l=smoothstep(0.,.3,abs(fract(vU.y*40.-uTime*.4)-.5))*.5+.5; float v=step(.5,fract(vU.x*240.))*.3+.7;
       gl_FragColor=vec4(vec3(.38,.9,1.)*a*l*v*step(${(R_TABLE - .5).toFixed(1)},uReveal),1.); }` }));
-  curtain.position.y = 2.5; scene.add(curtain);
+  curtain.position.y = 2.5;                         // (rideau de lumière retiré : faisceaux blancs jugés gênants)
   const tk = [];
   for (let i = 0; i < 360; i += 2) { const a = i * D2R, r0 = i % 10 === 0 ? R_TABLE + .15 : R_TABLE + .35; tk.push(Math.cos(a) * r0, 0, Math.sin(a) * r0, Math.cos(a) * (R_TABLE + .65), 0, Math.sin(a) * (R_TABLE + .65)); }
   const tg = new T.BufferGeometry(); tg.setAttribute("position", new T.Float32BufferAttribute(tk, 3));
@@ -296,11 +296,13 @@ function buildScene(tex, zone, texD) {
   try {
     if (T.EffectComposer && T.UnrealBloomPass) {
       H.composer = new T.EffectComposer(H.renderer); H.composer.addPass(new T.RenderPass(scene, H.camera));
-      H.bloom = new T.UnrealBloomPass(new T.Vector2(256, 256), .75, .45, .42); H.composer.addPass(H.bloom);
+      H.bloom = new T.UnrealBloomPass(new T.Vector2(256, 256), .42, .4, .55); H.composer.addPass(H.bloom);
     }
   } catch (e) { H.composer = null; }
   resize();
   if (H.renderer.initTexture) { H.renderer.initTexture(tex); H.renderer.initTexture(texD); }   // envoi à la carte graphique tout de suite
+  try { H.renderer.compile(scene, H.camera); applyCam(); if (H.composer) H.composer.render(); else H.renderer.render(scene, H.camera); }
+  catch (e) { /* préchauffage facultatif */ }
 }
 
 function buildBuildings(zone) {
@@ -351,7 +353,7 @@ function buildBuildings(zone) {
         vec3 xr=cy*edge*2.;
         vec3 col=mix(holo,th,uThermMix); col=mix(col,xr,uXMix);
         float al=mix(.88,edge*.95+.04,uXMix);
-        if(uScanR>0.){ float d=length(vW.xz-uScanC); col+=vec3(.4,1.,.85)*exp(-pow((d-uScanR)*4.,2.))*2.; }
+        if(uScanR>0.){ float d=length(vW.xz-uScanC); col+=vec3(.2,.75,1.)*exp(-pow((d-uScanR)*4.,2.))*.8; }
         gl_FragColor=vec4(col,al); }` });
   const mesh = new T.Mesh(g, m); mesh.renderOrder = 2; H.scene.add(mesh); H.buildings = mesh;
 }
@@ -369,6 +371,9 @@ function lineObj(pts, color, op) {
   const T = THREE, l = new T.Line(new T.BufferGeometry().setFromPoints(pts),
     new T.LineBasicMaterial({ color, transparent: true, opacity: op, blending: T.AdditiveBlending, depthWrite: false }));
   l.renderOrder = 3; H.scene.add(l); return l;
+}
+function whenIdle(fn) {                     // gros calcul (routes, bâtiments arrivés tard) : jamais pendant l'animation
+  if (H.active && H.mode === "boot") setTimeout(() => whenIdle(fn), 500); else fn();
 }
 function inTable(x, n, m = 0) { return Math.hypot(x, n) < R_TABLE - m; }
 
@@ -692,21 +697,22 @@ H.init = async function (opts) {
   H.loading = (async () => {
     try {
       for (const f of LIBS) if (!(f === "three.min.js" && window.THREE)) await loadScript("web/three/" + f);
-      const zoneP = (async () => { for (let i = 0; i < 40; i++) {      // les données OSM arrivent parfois après
+      const zoneP = (async () => { for (let i = 0; i < 200; i++) {     // les données OSM arrivent parfois bien après (serveur chargé)
         try { const z = await (await fetch(`zone?lat=${H.lat0}&lon=${H.lon0}`, { cache: "no-store" })).json(); if (z.etat === "ok") return z; } catch (e) { /* on réessaie */ }
-        await new Promise((r) => setTimeout(r, i < 3 ? 1500 : 4000)); if (H.ready && i > 3) return null; } return null; })();
+        await new Promise((r) => setTimeout(r, i < 3 ? 1500 : 6000)); } return null; })();
       await loadDEM();
-      const routesP = (async () => { for (let i = 0; i < 40; i++) {
+      const routesP = (async () => { for (let i = 0; i < 200; i++) {
         try { const z = await (await fetch(`routes?lat=${H.lat0}&lon=${H.lon0}`, { cache: "no-store" })).json(); if (z.etat === "ok") return z; } catch (e) { /* on réessaie */ }
         await new Promise((r) => setTimeout(r, i < 3 ? 2000 : 5000)); } return null; })();
       const [tex, texD] = await Promise.all([buildTexture(opts.tileImg, MAP_Z, 4096, EXT), buildTexture(opts.tileImg, DET_Z, 4096, DET_E)]);
       const zone = await Promise.race([zoneP, new Promise((r) => setTimeout(() => r(null), 4000))]);
       await new Promise((r) => setTimeout(r, 0));
       buildScene(tex, zone, texD);
-      routesP.then((r) => { if (r && r.routes) { buildRoads(r.routes); if (H.active && H.mode === "atlas") say(`Réseau routier chargé : ${H.roadKm.toFixed(0)} km de routes et sentiers.`, "s"); } });
+      routesP.then((r) => whenIdle(() => { if (r && r.routes) { buildRoads(r.routes); if (H.active && H.mode === "atlas") say(`Réseau routier chargé : ${H.roadKm.toFixed(0)} km de routes et sentiers.`, "s"); } }));
       H.zoneLate = zone ? null : zoneP;
-      if (H.zoneLate) H.zoneLate.then((z) => { if (z && !H.buildings) { buildBuildings(z); buildLines(z); buildDyn();
-        H.say && H.say(`Données OpenStreetMap reçues : ${H.buildingCount} bâtiments en 3D, ${H.peaks.length} sommets.`, "s"); } });
+      if (H.zoneLate) H.zoneLate.then((z) => whenIdle(() => { if (z && !H.buildings) { buildBuildings(z); buildLines(z); buildDyn();
+        H.say && H.say(`Données OpenStreetMap reçues : ${H.buildingCount} bâtiments en 3D, ${H.peaks.length} sommets.`, "s");
+        if (H.onData) H.onData(); } }));
       H.ready = true; H.vision = 0; H.labelsOn = false; H.autoOrbit = true;
       setSunNow(); applyWeather(opts.meteo);
       raf = requestAnimationFrame(frame);
@@ -744,9 +750,14 @@ H.bootDrive = function (u, lockAt) {
 H.bootEnd = function () { if (H.mode === "boot") { H.active = false; H.labelsOn = false; updateLabels(false); } };
 
 // plein écran interactif
-H.open = function () {
+H.open = function (reveal) {
   if (!H.ready) return false;
+  const was = H.active && H.mode === "boot";
   H.active = true; H.mode = "atlas"; H.labelsOn = true; H.homeLabel.on = true; H.beam.visible = true; if (lockT < 0) lockT = 0;
+  if (reveal && !was) {                               // ouverture directe : la table se matérialise depuis le centre
+    H.U.uReveal.value = 0; H.U.uRise.value = .01; scanT = 0; H.U.uScanC.value.set(0, 0);
+    Object.assign(cam, { ...home(), r: 40, th: (cam.th || Math.PI) - .6, ph: .25 });
+  }
   H.U.uRise.value = Math.max(H.U.uRise.value, .01);
   Object.assign(goal, { ...home(), r: 24, th: cam.th || Math.PI * .85, ph: .82 });
   if (cam.r > 40 || !isFinite(cam.r)) Object.assign(cam, { ...home(), r: 30, th: Math.PI, ph: .2 });

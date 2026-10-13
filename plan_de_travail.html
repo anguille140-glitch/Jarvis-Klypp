@@ -321,15 +321,21 @@ button { font: inherit; color: inherit; }
 .atl-stats { display: flex; gap: 22px; text-align: right; margin-left: auto; }
 .atl-stats div small { display: block; color: rgba(98, 230, 255, .55); letter-spacing: .2em; text-transform: uppercase; font-size: 9.5px; }
 .atl-stats div b { font: 500 16px var(--f-display); letter-spacing: .08em; font-variant-numeric: tabular-nums; }
-#atlAddrBtn { all: unset; cursor: pointer; padding: 8px 14px; border: 1px solid rgba(255, 178, 74, .55); font: 600 11px var(--f-display); letter-spacing: .22em; color: #ffb24a; background: rgba(3, 16, 28, .6); }
+#atlAddrBtn { all: unset; pointer-events: auto; cursor: pointer; padding: 8px 14px; border: 1px solid rgba(255, 178, 74, .55); font: 600 11px var(--f-display); letter-spacing: .22em; color: #ffb24a; background: rgba(3, 16, 28, .6); }
 #atlAddrBtn:hover, #atlAddrBtn.on { background: rgba(255, 178, 74, .16); }
 #atlAddr { right: 16px; top: 72px; width: 320px; z-index: 3; }
 #atlAddr[hidden], .abtn[hidden] { display: none; }
+#atlas.arrive .atl-top, #atlas.arrive #atlLeft, #atlas.arrive #atlConsole { animation: atlIn .8s cubic-bezier(.2, .8, .2, 1) both; }
+#atlas.arrive #atlLeft { animation-delay: .15s; } #atlas.arrive #atlConsole { animation-delay: .3s; }
+#atlas.arrive .atl-fx::after { content: ""; position: absolute; left: 0; right: 0; height: 2px; top: 0; background: linear-gradient(90deg, transparent, rgba(98, 230, 255, .7), transparent); animation: atlScan 1.2s ease-out both; }
+@keyframes atlIn { from { opacity: 0; transform: translateY(-12px) scaleY(.6); } 60% { opacity: .7; } to { opacity: 1; transform: none; } }
+@keyframes atlScan { from { top: 0; opacity: 1; } to { top: 100%; opacity: 0; } }
 #atlAddrIn { all: unset; box-sizing: border-box; width: 100%; padding: 9px 10px; border: 1px solid rgba(98, 230, 255, .45); background: rgba(0, 10, 20, .7); color: #fff; font: 12px var(--f-data); caret-color: #ffb24a; }
 #atlAddrIn:focus { border-color: #ffb24a; }
+#atlAddrX { all: unset; cursor: pointer; margin-left: 10px; color: #62e6ff; padding: 0 4px; } #atlAddrX:hover { color: #fff; }
 #atlAddrMsg { margin: 2px 0 0; font-size: 10.5px; color: rgba(98, 230, 255, .65); }
 #atlAddrMsg.w { color: #ffb24a; } #atlAddrMsg.s { color: #6dffc4; }
-#atlClose { all: unset; cursor: pointer; padding: 8px 14px; border: 1px solid rgba(98, 230, 255, .45); font: 600 11px var(--f-display); letter-spacing: .22em; color: #62e6ff; background: rgba(3, 16, 28, .6); }
+#atlClose { all: unset; pointer-events: auto; cursor: pointer; padding: 8px 14px; border: 1px solid rgba(98, 230, 255, .45); font: 600 11px var(--f-display); letter-spacing: .22em; color: #62e6ff; background: rgba(3, 16, 28, .6); }
 #atlClose:hover { background: rgba(98, 230, 255, .15); }
 .atl-dossier { padding: 10px 12px 12px; display: grid; gap: 9px; }
 .atl-dossier .tname { font: 600 19px var(--f-display); letter-spacing: .08em; color: #fff; line-height: 1.15; }
@@ -482,7 +488,7 @@ button { font: inherit; color: inherit; }
     <button id="atlClose" title="Retour au plan de travail (Échap)">✕ RETOUR</button>
   </header>
   <form class="atl-panel" id="atlAddr" hidden autocomplete="off">
-    <h2>Lieu <span id="atlAddrNow">domicile</span></h2>
+    <h2>Lieu <span><span id="atlAddrNow">domicile</span> <button type="button" id="atlAddrX" title="Fermer (Échap)">✕</button></span></h2>
     <div class="atl-grp">
       <input id="atlAddrIn" placeholder="Adresse, ville, sommet… (ex. Chamonix)" aria-label="Adresse ou lieu">
       <button class="abtn big" type="submit" id="atlAddrGo" title="Voir ce lieu sur la holo-table, sans changer ton domicile">Explorer ce lieu</button>
@@ -731,7 +737,7 @@ const SFX = (() => {
     if (ac || vol <= 0) return;
     try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
     const comp = ac.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 5; comp.connect(ac.destination);
-    out = ac.createGain(); out.gain.value = vol * .5; out.connect(comp);   // plus doux qu'avant
+    out = ac.createGain(); out.gain.value = vol * .25; out.connect(comp);   // bien plus doux qu'avant
     const len = ac.sampleRate * 2.6 | 0, ir = ac.createBuffer(2, len, ac.sampleRate);   // réverbe « grande salle »
     for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2); }
     const conv = ac.createConvolver(); conv.buffer = ir; rev = ac.createGain(); rev.gain.value = .35; rev.connect(conv); conv.connect(out);
@@ -1175,9 +1181,25 @@ const GLYPHS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#/<>Δ";
 const FRAME_MS = 1000 / 120, clocks = { boot: 0, orb: 0 };
 const due = (k, now) => { if (now - clocks[k] < FRAME_MS - 2) return false; clocks[k] = now; return true; };
 const perfBoot = { n: 0, long: 0, worst: 0, last: 0 };
+let gateT0 = 0;
+function drawGate(now) {                                // pendant la préparation : petit anneau holographique
+  const W = fc.width, H = fc.height, px = W / Math.max(1, fc.clientWidth), cx = W / 2, cy = H / 2, t = now / 1000;
+  f.clearRect(0, 0, W, H); f.save(); f.lineWidth = 2 * px;
+  for (let k = 0; k < 3; k++) { const a = t * (k % 2 ? -1.6 : 1.1) + k * 2, r = (46 + k * 16) * px;
+    f.strokeStyle = `rgba(79,216,255,${.65 - k * .15})`; f.beginPath(); f.arc(cx, cy, r, a, a + 1.4 + k * .5); f.stroke(); }
+  f.restore();
+  $("#term").textContent = "> PRÉPARATION DE LA HOLO-TABLE" + ".".repeat(1 + Math.floor(t * 3) % 3);
+}
 function drawBoot() {
   const now = performance.now();                      // même horloge que skip() et finishBoot()
   if (VUE && !bootDone && !bootStart) bootStart = now - T_END * 1000;   // exploration d'un lieu : pas de globe
+  if (!bootStart) {                                     // on prépare tout AVANT l'animation (sinon elle saccade)
+    gateT0 = gateT0 || now;
+    const ok = !LIVE || !window.HOLO || HOLO.failed || HOLO.ready || now - gateT0 > 9000 || (!S.lieu && now - gateT0 > 3000);
+    if (!ok) { drawGate(now); requestAnimationFrame(drawBoot); return; }
+    if (now - gateT0 > 200) report(`intro lancée après ${Math.round(now - gateT0)} ms de préparation`);
+    bootStart = now; f.clearRect(0, 0, fc.width, fc.height);
+  }
   if (!due("boot", now)) { if (!bootDone) requestAnimationFrame(drawBoot); return; }
   if (perfBoot.last) { const d = now - perfBoot.last; perfBoot.n++; if (d > 50) perfBoot.long++; perfBoot.worst = Math.max(perfBoot.worst, d); }
   perfBoot.last = now;
@@ -1201,7 +1223,9 @@ function drawBoot() {
   const warpM = t > T_MAP ? 7.4 * 3 * Math.pow(1 - mapU, 2) / (T_LOCK - T_MAP + .6) * .69 : 0;
   const warp = clamp(Math.max(warpG, warpM * (1 - mapA * .3)) / 2.2, 0, 1);
   const atmoE = clamp((t - T_ATMO) / .7, 0, 1) * clamp(1 - (t - T_MAP - .5) / .9, 0, 1);
-  g.clearRect(0, 0, W, H);
+  const covered = holoOn && t > T_MAP + .7;            // la 3D couvre tout l'écran : inutile de dessiner dessous
+  if (!covered || !g._cleared) { g.clearRect(0, 0, W, H); g._cleared = covered; }
+  if (!covered) {
   drawStars(W, H, dt, 720 * (1 - spin), warp * (1 - atmoE), intro * clamp(1 - (t - T_ATMO) / 1.4, 0, 1), px);
   drawFlare(cx, cy, R * (.75 + .25 * intro), W, H, px, clamp(1 - zk * 2.2, 0, 1) * intro * (.85 + .15 * Math.sin(t * 3)));
   drawGlobeOn(g, W, H, cx, cy, R * (.75 + .25 * intro), l0, p0, {
@@ -1210,6 +1234,7 @@ function drawBoot() {
   });
   drawOrbits(cx, cy, R * (.75 + .25 * intro), t, px, intro * clamp(1 - zk * 2.5, 0, 1));
   drawAtmo(W, H, t, atmoE, px);
+  }
   // carte réelle en hologramme : zoom jusqu'à la rue, puis vue inclinée en 3D qui tourne doucement
   const lockQ = t > T_LOCK ? clamp((t - T_LOCK) / 1.4, 0, 1) : 0;
   const zf = 9.6 + 7.4 * easeOut(mapU, 3);
@@ -1218,7 +1243,8 @@ function drawBoot() {
     holoOn = true; boot.insertBefore(hw, fc); HOLO.bootStart(); report("holo-table 3D en approche");
   }
   if (holoOn) { const hu = t - (T_MAP - .4); HOLO.bootDrive(hu, T_LOCK - (T_MAP - .4)); hw.style.opacity = clamp(hu / .9, 0, 1); }
-  drawMap(t, zf, holoOn ? 0 : mapA, clamp((t - T_MAP) / 1.3, 0, 1), lockQ);
+  if (!holoOn || !mc._hidden) drawMap(t, zf, holoOn ? 0 : mapA, clamp((t - T_MAP) / 1.3, 0, 1), lockQ);
+  if (holoOn !== !!mc._hidden) { mc._hidden = holoOn; mc.style.visibility = holoOn ? "hidden" : ""; }   // grande couche inutile
   const tp = ease(clamp((t - T_TILT) / (T_LOCK + .5 - T_TILT), 0, 1));
   const shake = t > T_LOCK ? 7 * Math.exp(-(t - T_LOCK) * 6) : 0;
   mc.style.transform = `translate(${(Math.random() - .5) * shake}px,${(Math.random() - .5) * shake}px) perspective(1100px) rotateX(${50 * tp}deg) rotateZ(${(t - T_MAP) * 3.2 - 10}deg)`;
@@ -1272,7 +1298,7 @@ function replayBoot() {                                // « ouvre le plan de tr
     location.reload(); return;                          // nouvelle position : on reconstruit la holo-table
   }
   closeAtlas();
-  bootDone = false; bootStart = 0;
+  bootDone = false; bootStart = 0; g._cleared = false;
   boot.hidden = false; boot.classList.remove("out"); $("#lock").style.opacity = 0;
   sizeBoot(); setTarget(); startSequence();
   report("animation du globe rejouée");
@@ -1285,8 +1311,10 @@ function finishBoot() {
   Object.assign(perfBoot, { n: 0, long: 0, worst: 0, last: 0 });
   perfT = 0;                                           // la mesure de fluidité repart de zéro après le globe
   SFX.exit();
-  if (holoOn) { holoOn = false; HOLO.bootEnd(); atlas.insertBefore(hw, atlas.firstChild); hw.style.opacity = 1; }
-  if (pendingAtlas) setTimeout(openAtlas, 900);
+  const toAtlas = pendingAtlas && holoReady();
+  if (holoOn) { holoOn = false; if (!toAtlas) HOLO.bootEnd(); atlas.insertBefore(hw, atlas.firstChild); hw.style.opacity = 1; }
+  if (toAtlas) openAtlas(true);                          // l'intro continue sans coupure dans la holo-table
+  else if (pendingAtlas) setTimeout(openAtlas, 900);
   $("#lockCity").textContent = lockName;
   boot.classList.add("out"); $("#deck").hidden = false;
   setTimeout(() => { boot.hidden = true; }, 1200);
@@ -1664,7 +1692,7 @@ function syncSun() {
 function syncStats() {
   const m = S.meteo || {};
   $("#atlMeteo").textContent = m.temp != null ? `${m.temp} °C · ${m.vent ?? "?"} KM/H` : "—";
-  $("#atlObj").textContent = `${HOLO.buildingCount} BÂT · ${HOLO.peaks.length} SOMMETS`;
+  $("#atlObj").textContent = HOLO.buildingCount || HOLO.peaks.length ? `${HOLO.buildingCount} BÂT · ${HOLO.peaks.length} SOMMETS` : "TÉLÉCHARGEMENT…";
   $("#atlPlace").textContent = `${(VUE ? VUE.ville : (S.lieu || {}).ville || "Domicile").toUpperCase()} · ${VUE ? "EXPLORATION" : "RELIEF RÉEL"} · OPENSTREETMAP`;
   $("#atlAddrNow").textContent = VUE ? "exploration" : "domicile"; $("#atlAddrBack").hidden = !VUE;
   if (VUE) $("#atlMeteo").textContent = "—";
@@ -1675,6 +1703,7 @@ function startHolo() {
   HOLO.say = atlasSay; HOLO.onTarget = showTarget; HOLO.onClose = closeAtlas; HOLO.onSun = syncSun;
   HOLO.onViewshed = (on) => $("#atlVS").classList.toggle("on", on);
   HOLO.onRoads = (on) => $("#atlRoads").classList.toggle("on", on);
+  HOLO.onData = () => syncStats();
   const at = VUE || { lat: target.lat, lon: target.lon, ville: (S.lieu || {}).ville };
   HOLO.init({ lat: at.lat, lon: at.lon, ville: at.ville, canvas: $("#holo"), labels: $("#hlabels"), home: !VUE,
     meteo: VUE ? null : S.meteo, tileImg: holoTileImg, report }).then((ok) => {
@@ -1683,13 +1712,17 @@ function startHolo() {
     if (pendingAtlas && bootDone) openAtlas();
   });
 }
-function openAtlas() {
+function openAtlas(fromBoot) {
+  if (fromBoot !== true) fromBoot = false;
   if (!bootDone) { pendingAtlas = true; return; }
   if (!LIVE || !window.HOLO || HOLO.failed) { setQuip("La holo-table a besoin d'internet la première fois (relief et carte).", "HOLO"); pendingAtlas = false; return; }
   if (!HOLO.ready) { pendingAtlas = true; startHolo(); setQuip("Holo-table en préparation : téléchargement du relief…", "HOLO"); return; }
   pendingAtlas = false;
   if (hw.parentNode !== atlas) atlas.insertBefore(hw, atlas.firstChild);
-  hw.style.opacity = 1; atlas.hidden = false; HOLO.open(); syncStats(); syncSun();
+  hw.style.opacity = 1; atlas.hidden = false; HOLO.open(!fromBoot); syncStats(); syncSun();
+  atlas.classList.remove("arrive"); void atlas.offsetWidth; atlas.classList.add("arrive");   // panneaux qui se déploient
+  setTimeout(() => atlas.classList.remove("arrive"), 1800);
+  if (QS.has("atlas")) history.replaceState(null, "", location.pathname + (VUE ? location.search.replace(/&?atlas=1/, "") : ""));
   if (!$("#atlLog").children.length) atlasSay(`Holo-table en ligne. Relief réel sur ${32} km, ${HOLO.peaks.length} sommets identifiés.`, "s");
   report("holo-table ouverte");
 }
@@ -1698,11 +1731,15 @@ function holoVoice(h) {
   if (!h || h.seq === holoSeq) return;
   const first = holoSeq === null; holoSeq = h.seq;
   const fresh = h.t && Math.abs(Date.now() / 1000 - h.t) < 25;   // commande qui vient d'ouvrir la page
-  if (first && h.cmd !== "ouvrir" && (!fresh || (h.cmd === "explorer" && VUE))) return;   // ancienne commande déjà jouée
+  if (first && (!fresh || (h.cmd === "explorer" && VUE))) return;   // ancienne commande : on ne la rejoue pas
+  if (first && h.cmd === "ouvrir") { pendingAtlas = true; return; }   // la page vient de s'ouvrir pour la holo-table : intro puis table
   if (h.cmd === "fermer") return closeAtlas();
   if (h.cmd === "explorer" && h.arg) { if (holoReady() && bootDone) { openAtlas(); explorePlace(h.arg); } else setTimeout(() => explorePlace(h.arg), 4000); return; }
+  if (h.cmd === "ouvrir") {                               // même intro que le plan de travail, qui plonge dans la holo-table
+    if (bootDone && atlas.hidden && holoReady()) { replayBoot(); pendingAtlas = true; } else openAtlas();
+    return;
+  }
   openAtlas();
-  if (h.cmd === "ouvrir") return;
   const run = () => HOLO.command(h.cmd === "mode" ? h.arg : `${h.cmd} ${h.arg || ""}`);
   if (holoReady() && bootDone) run(); else { const w = setInterval(() => { if (holoReady() && bootDone && !atlas.hidden) { clearInterval(w); run(); } }, 400); setTimeout(() => clearInterval(w), 60000); }
 }
@@ -1712,6 +1749,8 @@ $("#atlClose").addEventListener("click", closeAtlas);
 const addrMsg = (t, c = "") => { const e = $("#atlAddrMsg"); e.textContent = t; e.className = c; };
 function toggleAddr(v) { const p = $("#atlAddr"); p.hidden = v === undefined ? !p.hidden : !v; $("#atlAddrBtn").classList.toggle("on", !p.hidden); if (!p.hidden) $("#atlAddrIn").focus(); }
 $("#atlAddrBtn").addEventListener("click", () => toggleAddr());
+$("#atlAddrX").addEventListener("click", () => toggleAddr(false));
+$("#atlAddrIn").addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); toggleAddr(false); } });
 async function geocode(q) {
   const r = await fetch("action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "geocode", texte: q }) });
   const j = JSON.parse((await r.json()).resultat || "{}"); return j.lat != null ? j : null;
@@ -1751,7 +1790,7 @@ addEventListener("keydown", (e) => {
   if (atlas.hidden || e.target.tagName === "INPUT") return;   // on tape une commande ou une adresse
   const k = e.key.toLowerCase(), map = { "1": () => $('#atlLeft [data-v="0"]').click(), "2": () => $('#atlLeft [data-v="1"]').click(),
     "3": () => $('#atlLeft [data-v="2"]').click(), s: () => $("#atlScan").click(), v: () => $("#atlFly").click(), d: () => $("#atlDrones").click(),
-    t: () => $("#atlSat").click(), n: () => $("#atlClouds").click(), c: () => $("#atlVS").click(), g: () => $("#atlRoads").click(), a: () => toggleAddr(), r: () => $("#atlHome").click(), escape: closeAtlas };
+    t: () => $("#atlSat").click(), n: () => $("#atlClouds").click(), c: () => $("#atlVS").click(), g: () => $("#atlRoads").click(), a: () => toggleAddr(), r: () => $("#atlHome").click(), escape: () => { if (!$("#atlAddr").hidden) toggleAddr(false); else closeAtlas(); } };
   if (map[k]) { e.preventDefault(); map[k](); }
 });
 

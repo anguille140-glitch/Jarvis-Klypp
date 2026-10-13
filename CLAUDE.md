@@ -51,7 +51,14 @@ et donne les actions à faire (fichiers à lancer) clairement.
   max régulières (globe, sphère, holo), pas de `shadowBlur` plein écran, pixel ratio ≤ 1,5. Le journal indique
   « animation du globe terminée (… images/s, … à-coups) » et « carte z13 relue du cache / calculée en … ms ».
   Chargement sans faisceaux blancs : bouclier holo autour du globe, tunnel d'hexagones, anneaux verts à l'arrivée.
-  Sons du plan de travail moitié moins forts (défaut `JARVIS_PLAN_SONS` 40).
+  Sons du plan de travail 4× moins forts qu'à l'origine (gain ×0,25, défaut `JARVIS_PLAN_SONS` 30).
+  Intro unique : le globe attend que la holo-table soit prête (`drawGate`, 9 s max) pour ne rien calculer pendant
+  l'animation ; shaders précompilés ; routes / bâtiments tardifs construits hors animation (`whenIdle`). « Plan de
+  travail » = intro puis cockpit ; « holo-table » = MÊME intro qui se prolonge sans coupure dans la table
+  (`openAtlas(true)`), ou intro rejouée si le cockpit est déjà ouvert. Une commande holo n'est rejouée au chargement
+  que si elle a moins de 25 s (`h.t`), sinon le plan de travail ouvrait aussi la table. Rideau de lumière retiré,
+  bloom adouci. Overpass : serveurs de secours + une requête à la fois (`_overpass`) ; la page réessaie ~20 min.
+  Boutons de l'en-tête avec `all: unset` → remettre `pointer-events: auto` (sinon non cliquables).
 - `vitrine_cs.py` + `vitrine_cs.html` + `skins_cs.json` — VITRINE CS2 (« lance mon fond d'écran ») : intro ouverture de
   caisse, skins chers qui défilent (inspection 3D souris, zoom, caisses, favoris, tirs dans le décor, bruitages WebAudio),
   pilotable à la voix (outil `fond_ecran`, `VITRINE_RE` / `VITRINE_CMDS`, `find_skin`). Images Steam téléchargées une
