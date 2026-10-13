@@ -24,7 +24,7 @@ et donne les actions à faire (fichiers à lancer) clairement.
   image `ROND` si WebGL indisponible. dpr ≤ 1,5.
 - LANCER / FERMER : phrases de lancement `LAUNCH_PHRASES` (+ `JARVIS_MOT_LANCEMENT`, liste), double clap
   (`wait_launch_word(clap_factory, rms)`), icônes du bureau « JARVIS » / « Éteindre JARVIS » + raccourcis
-  Ctrl+Alt+J / Ctrl+Alt+Fin (`creer_raccourcis.py` lancé par `installer_demarrage.bat`, `jarvis_bureau.py` dépose
+  Ctrl+Alt+J / Ctrl+Alt+Fin (`creer_raccourcis.py` lancé par `installer_demarrage.bat` ou `creer_icones.bat` : sur le bureau ce sont de vrais fichiers `.jarvis` / `.jarvisstop` (type enregistré dans HKCU, donc sans flèche de raccourci), les touches passent par des .lnk du menu Démarrer/Jarvis ; `jarvis_bureau.py` dépose
   un « mot » dans `.cache/commandes`, lu par `commandes_bureau.take`), visage reconnu en sommeil
   (`accueil.start(on_recognized=…)` dans `wait_for_launch`). Arrêt : `is_stop` (« fin de programme », « au revoir /
   bonne nuit Jarvis », « Jarvis éteins-toi »… ; en sommeil `strict=True` : seulement « fin de programme ») ;
