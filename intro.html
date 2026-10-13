@@ -17,6 +17,7 @@
 html, body { height: 100%; }
 body { margin: 0; background: var(--void); color: var(--ice); font-family: var(--mono); overflow: hidden; }
 canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+#g { pointer-events: none; }
 .veil {
   position: fixed; inset: 0; display: grid; place-items: center; padding-inline: 16px;
   background: radial-gradient(60% 60% at 50% 45%, rgba(10, 40, 60, .55), rgba(2, 6, 11, .92));
@@ -39,6 +40,7 @@ button:focus-visible { outline: 2px solid var(--ember); outline-offset: 3px; }
 </style>
 
 <canvas id="c" aria-label="Animation d'intro Jarvis"></canvas>
+<canvas id="g" aria-hidden="true"></canvas>
 <div class="veil" id="veil">
   <div class="card">
     <h1>J.A.R.V.I.S</h1>
@@ -70,6 +72,54 @@ function faceitColor(l) { return l <= 1 ? "#eeeeee" : l <= 3 ? "#1ce400" : l <= 
 
 const C = { void: "#02060b", ion: "#3fd8ff", ice: "#d9f6ff", ember: "#ffad42", steel: "#2b5a6e", deep: "#0a2230" };
 const cv = document.getElementById("c"), ctx = cv.getContext("2d");
+/* ---------- LA sphère de Jarvis (celle du bureau, avec « J.A.R.V.I.S » dessous), dessinée par la carte graphique
+   avec le même programme que orb_gpu.py (orb_sphere.glsl). Secours : l'ancienne image si WebGL est indisponible. */
+const ORB = (() => {
+  const g = document.getElementById("g"); let gl = null, U = {}, ok = false;
+  const names = ["uRes", "uC", "uR", "uT", "uLvl", "uListen", "uThink", "uRot", "uFlow", "uGain", "uFade", "uNParts", "uTextRect", "uTextA", "uText"];
+  async function init() {
+    try {
+      const src = await (await fetch("orb_sphere.glsl", { cache: "no-store" })).text();
+      gl = g.getContext("webgl2", { premultipliedAlpha: true, alpha: true, antialias: false, powerPreference: "high-performance" });
+      if (!gl) return false;
+      const sh = (type, code) => { const o = gl.createShader(type); gl.shaderSource(o, code); gl.compileShader(o);
+        if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
+      const pr = gl.createProgram();
+      gl.attachShader(pr, sh(gl.VERTEX_SHADER, "#version 300 es\nin vec2 p; void main(){ gl_Position = vec4(p, 0., 1.); }"));
+      gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, "#version 300 es\nprecision highp float;\nprecision highp int;\n" + src));
+      gl.linkProgram(pr); if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
+      gl.useProgram(pr);
+      const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+      const loc = gl.getAttribLocation(pr, "p"); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+      names.forEach((n) => { U[n] = gl.getUniformLocation(pr, n); });
+      const tx = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tx);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+      gl.uniform1i(U.uText, 0); gl.uniform1i(U.uNParts, 0); gl.uniform1f(U.uTextA, 0);
+      gl.enable(gl.BLEND); ok = true; return true;
+    } catch (e) { console.warn("sphère WebGL indisponible", e); ok = false; return false; }
+  }
+  function resize(w, h) { g.width = w; g.height = h; }
+  function begin() { if (!ok) return; gl.disable(gl.SCISSOR_TEST); gl.viewport(0, 0, g.width, g.height); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); }
+  // x, y, r en coordonnées de la scène 1920×1080
+  function draw(x, y, r, t, o = {}) {
+    if (!ok || r <= 1) return;
+    const X = (x * sc + ox) * dpr, Y = (y * sc + oy) * dpr, R = r * sc * dpr, m = R * 1.55;
+    gl.enable(gl.SCISSOR_TEST); gl.scissor(Math.floor(X - m), Math.floor(g.height - Y - m), Math.ceil(2 * m), Math.ceil(2 * m));
+    gl.blendFunc(gl.ONE, o.add ? gl.ONE : gl.ONE_MINUS_SRC_ALPHA);
+    gl.uniform2f(U.uRes, g.width, g.height); gl.uniform2f(U.uC, X, Y); gl.uniform1f(U.uR, R);
+    gl.uniform1f(U.uT, t); gl.uniform1f(U.uLvl, o.lvl || 0); gl.uniform1f(U.uListen, o.listen || 0); gl.uniform1f(U.uThink, o.think || 0);
+    gl.uniform1f(U.uRot, o.rot ?? t * .3); gl.uniform1f(U.uFlow, o.flow ?? t * .5);
+    gl.uniform1f(U.uGain, o.gain ?? 1); gl.uniform1f(U.uFade, o.fade ?? 1);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+  return { init, resize, begin, draw, get ok() { return ok; } };
+})();
+// motif hexagonal (pré-dessiné une fois) pour le fond, comme le plan de travail
+const HEX = (() => { const c = document.createElement("canvas"); c.width = 56; c.height = 97; const x = c.getContext("2d");
+  x.strokeStyle = "rgba(63,216,255,.09)"; x.lineWidth = 1; x.beginPath();
+  x.moveTo(28, 0); x.lineTo(56, 16); x.lineTo(56, 48); x.lineTo(28, 64); x.lineTo(0, 48); x.lineTo(0, 16); x.closePath();
+  x.moveTo(28, 64); x.lineTo(28, 97); x.stroke(); return c; })();
+let hexPat = null;
 const img = new Image(); img.src = ROND;
 // icône de niveau FACEIT fournie par l'utilisateur (faceit_niveau.png dans le dossier de Jarvis), si présente
 const lvlImg = { el: new Image(), ok: false };
@@ -78,9 +128,10 @@ const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 let W = 0, H = 0, dpr = 1, sc = 1, ox = 0, oy = 0;
 function resize() {
-  dpr = Math.min(2, window.devicePixelRatio || 1);
+  dpr = Math.min(1.5, window.devicePixelRatio || 1);      // assez net, et fluide
   W = innerWidth; H = innerHeight;
   cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  ORB.resize(cv.width, cv.height);
   sc = Math.min(W / 1920, H / 1080); ox = (W - 1920 * sc) / 2; oy = (H - 1080 * sc) / 2;
 }
 addEventListener("resize", resize); resize();
@@ -191,6 +242,61 @@ function smoothLine(pts, x, y, w, h, color, alpha, shift) {
   ctx.shadowBlur = 0; ctx.fillStyle = g; ctx.fill(); ctx.restore();
 }
 
+// ---------- décor commun (style plan de travail / holo-table)
+function hexBg(t, a) {                                   // grille hexagonale qui dérive, effacée au centre
+  if (a <= 0) return;
+  hexPat = hexPat || ctx.createPattern(HEX, "repeat");
+  ctx.save(); ctx.globalAlpha = a; ctx.translate((t * 6) % 56, (t * 10) % 97); ctx.fillStyle = hexPat; ctx.fillRect(-120, -120, 2160, 1320); ctx.restore();
+  const m = ctx.createRadialGradient(CX, CY, 120, CX, CY, 760); m.addColorStop(0, rgba(C.void, .95)); m.addColorStop(.55, rgba(C.void, .35)); m.addColorStop(1, rgba(C.void, 0));
+  ctx.fillStyle = m; ctx.fillRect(0, 0, 1920, 1080);
+}
+function shield(x, y, r, t, a) {                          // bouclier holographique : anneaux, graduations, arc de scan
+  if (a <= .01) return;
+  ctx.save(); ctx.globalAlpha = a; ctx.lineCap = "butt";
+  [[1.0, 1.4, [3, 9], .3, .14], [1.07, 2.2, [26, 10, 4, 10], .4, -.09], [1.17, 1, [1, 5], .25, .05]].forEach(([k, w, dash, al, sp]) => {
+    ctx.strokeStyle = rgba(C.ion, al); ctx.lineWidth = w; ctx.setLineDash(dash); ctx.lineDashOffset = -t * sp * 400;
+    ctx.beginPath(); ctx.arc(x, y, r * k, 0, TAU); ctx.stroke(); });
+  ctx.setLineDash([]);
+  for (let k = 0; k < 72; k++) { const an = k / 72 * TAU + t * .05, r1 = r * 1.12, r2 = r1 + (k % 6 ? 6 : 14);
+    ctx.strokeStyle = rgba(C.ion, k % 6 ? .2 : .5); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x + Math.cos(an) * r1, y + Math.sin(an) * r1); ctx.lineTo(x + Math.cos(an) * r2, y + Math.sin(an) * r2); ctx.stroke(); }
+  const sw = t * .9;
+  ctx.strokeStyle = rgba(C.ember, .6); ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(x, y, r * 1.07, sw, sw + .5); ctx.stroke();
+  ctx.strokeStyle = rgba(C.ember, .25); ctx.beginPath(); ctx.arc(x, y, r * 1.07, sw + Math.PI, sw + Math.PI + .25); ctx.stroke();
+  ctx.restore();
+  ["000", "090", "180", "270"].forEach((lab, k) => { const an = k * Math.PI / 2 - Math.PI / 2 + t * .05;
+    text(lab, x + Math.cos(an) * r * 1.27, y + Math.sin(an) * r * 1.27, 11, "#7fd8f0", { align: "center", alpha: a * .8 }); });
+}
+function hexWave(x, y, k, a) {                            // onde de choc hexagonale (au lieu d'un éclair blanc)
+  if (k <= 0 || k >= 1) return;
+  ctx.save();
+  [0, .2].forEach((d) => { const q = clamp((k - d) / (1 - d)); if (q <= 0) return; const R = lerp(170, 1050, out3(q));
+    ctx.strokeStyle = rgba(C.ion, .55 * (1 - q) * a); ctx.lineWidth = 4 * (1 - q) + 1; ctx.beginPath();
+    for (let j = 0; j <= 6; j++) { const an = j * TAU / 6 + Math.PI / 6; j ? ctx.lineTo(x + Math.cos(an) * R, y + Math.sin(an) * R) : ctx.moveTo(x + Math.cos(an) * R, y + Math.sin(an) * R); }
+    ctx.stroke(); });
+  ctx.restore();
+}
+function orbLabel(x, y, a) {                              // « J . A . R . V . I . S » sous la sphère, comme sur le bureau
+  if (a > 0) text("J.A.R.V.I.S", x, y, 22, "#38c8ff", { align: "center", spacing: 26, alpha: a, weight: 500, glow: 10 });
+}
+function miniGlobe(x, y, r, t, a) {                       // petit globe filaire + liaison satellite (rappel du plan de travail)
+  if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; ctx.lineWidth = 1;
+  ctx.strokeStyle = rgba(C.ion, .55); ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.stroke();
+  const rot = t * .5;
+  for (let lo = 0; lo < 12; lo++) { const ph = lo / 12 * Math.PI + rot, k = Math.cos(ph);
+    ctx.strokeStyle = rgba(C.ion, .12 + .25 * Math.abs(Math.sin(ph))); ctx.beginPath(); ctx.ellipse(x, y, Math.abs(k) * r, r, 0, 0, TAU); ctx.stroke(); }
+  for (let la = -2; la <= 2; la++) { const yy = y + la * r * .36, rr = Math.sqrt(Math.max(0, r * r - (la * r * .36) ** 2));
+    ctx.strokeStyle = rgba(C.ion, .25); ctx.beginPath(); ctx.ellipse(x, yy, rr, rr * .12, 0, 0, TAU); ctx.stroke(); }
+  const px = x + Math.sin(rot + 1) * r * .55, py = y - r * .35, pul = (t * .9) % 1;
+  ctx.fillStyle = C.ember; ctx.beginPath(); ctx.arc(px, py, 3.5, 0, TAU); ctx.fill();
+  ctx.strokeStyle = rgba(C.ember, 1 - pul); ctx.beginPath(); ctx.arc(px, py, 4 + pul * 18, 0, TAU); ctx.stroke();
+  const sa = t * .8, sx = x + Math.cos(sa) * r * 1.45, sy = y + Math.sin(sa) * r * .5 - r * .2;
+  ctx.strokeStyle = rgba(C.ion, .3); ctx.beginPath(); ctx.ellipse(x, y - r * .2, r * 1.45, r * .5, 0, 0, TAU); ctx.stroke();
+  ctx.fillStyle = C.ice; ctx.fillRect(sx - 2.5, sy - 2.5, 5, 5);
+  ctx.strokeStyle = rgba(C.ember, .5); ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(px, py); ctx.stroke();
+  ctx.restore();
+}
+
 // ---------- une image
 function frame(t) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -211,11 +317,12 @@ function frame(t) {
   for (let i = -16; i <= 16; i++) { ctx.beginPath(); ctx.moveTo(CX + i * 34, 760); ctx.lineTo(CX + i * 210, 1080); ctx.stroke(); }
   for (let j = 0; j < 9; j++) { const yy = 760 + Math.pow(j / 8, 1.8) * 320 + ((t * 18) % 40) * (j / 8); ctx.globalAlpha = .18 * gridK * (j / 8); ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(1920, yy); ctx.stroke(); }
   ctx.restore();
+  hexBg(t, gridK);
   // poussière
   ctx.save(); dust.forEach(p => { const y = (p.y - t * p.v + 1080) % 1080; ctx.globalAlpha = p.a * live * gridK; ctx.fillStyle = C.ion; ctx.beginPath(); ctx.arc(p.x, y, p.r, 0, TAU); ctx.fill(); }); ctx.restore();
 
   // balayage de démarrage
-  if (t < .7) { const k = seg(t, 0, .7), y = lerp(-20, 1100, ease(k)); const g = ctx.createLinearGradient(0, y - 80, 0, y); g.addColorStop(0, rgba(C.ion, 0)); g.addColorStop(1, rgba(C.ion, .35 * (1 - k))); ctx.fillStyle = g; ctx.fillRect(0, y - 80, 1920, 80); ctx.fillStyle = rgba(C.ice, .8 * (1 - k)); ctx.fillRect(0, y, 1920, 2); }
+  if (t < .7) { const k = seg(t, 0, .7), y = lerp(-20, 1100, ease(k)); const g = ctx.createLinearGradient(0, y - 80, 0, y); g.addColorStop(0, rgba(C.ion, 0)); g.addColorStop(1, rgba(C.ion, .22 * (1 - k))); ctx.fillStyle = g; ctx.fillRect(0, y - 80, 1920, 80); ctx.fillStyle = rgba(C.ion, .6 * (1 - k)); ctx.fillRect(0, y, 1920, 1.5); }
 
   // cadre : coins + barre du haut
   const frameK = ease(seg(t, .2, 1.2)) * live;
@@ -264,82 +371,68 @@ function frame(t) {
     });
     ctx.restore();
   }
-  // anneaux du centre : ils s'allument en attendant le noyau
+  // anneaux du centre : graduations qui se remplissent au rythme du chargement, puis bouclier holographique
   const ringIn = ease(seg(t, .05, 1.1)) * live;
-  const spin = t * .35;
   const R = r => r * (1 - .85 * ease(outK));
   ctx.save(); ctx.globalAlpha = ringIn;
   for (let i = 0; i < 120; i++) {
     const a = i / 120 * TAU - Math.PI / 2; if (i / 120 > charge + .002 && travelling) continue;
     const big = i % 10 === 0, r0 = R(322), r1 = R(big ? 342 : 332);
-    ctx.strokeStyle = rgba(big ? C.ice : C.ion, big ? .75 : .35); ctx.lineWidth = big ? 2 : 1;
+    ctx.strokeStyle = rgba(big ? C.ice : C.ion, big ? .6 : .3); ctx.lineWidth = big ? 2 : 1;
     ctx.beginPath(); ctx.moveTo(CX + Math.cos(a) * r0, CY + Math.sin(a) * r0); ctx.lineTo(CX + Math.cos(a) * r1, CY + Math.sin(a) * r1); ctx.stroke();
   }
   ctx.restore();
   const pa = -Math.PI / 2;
-  arc(R(300), pa, pa + TAU * Math.max(.001, travelling ? charge : 1), C.ion, travelling ? 2 : 4, ringIn * (travelling ? .55 : 1), travelling ? 6 : 18);
-  [[262, 1.1, .9, C.ion, 2], [248, -.7, 2.2, C.steel, 6], [372, .25, .45, C.ion, 1.5], [358, -.18, 1.6, C.ember, 2]].forEach(([r, v, len, col, w], i) => {
-    const a0 = spin * v * 2 + i * 1.7;
-    for (let q = 0; q < 3; q++) arc(R(r), a0 + q * TAU / 3, a0 + q * TAU / 3 + len * .5, col, w, ringIn * (col === C.ember ? .85 : .7));
-  });
-  // le rond (ton image)
-  if (img.complete && img.naturalWidth) {
-    const docked = !travelling;
-    const px = docked ? CX : tx, py = docked ? CY : ty;
-    const s = (docked ? 1 + .03 * Math.sin(t * 2.2) + .07 * Math.exp(-impact * 5) : lerp(.5, .8, k)) * (1 - .9 * ease(outK));
-    const size = 2 * coreR * s;
-    // fantômes (traînée de l'image)
-    if (travelling && onScreen) for (let gI = 3; gI >= 1; gI--) {
-      const kk = clamp(k - gI * .035), gs = size * (1 - gI * .06);
-      ctx.save(); ctx.globalAlpha = .12 * (4 - gI) / 3; ctx.translate(TX(kk), TY(kk)); ctx.rotate(-t * .9);
-      ctx.drawImage(img, -gs / 2, -gs / 2, gs, gs); ctx.restore();
+  arc(R(300), pa, pa + TAU * Math.max(.001, travelling ? charge : 1), C.ion, travelling ? 2 : 3, ringIn * (travelling ? .55 : .9), 8);
+  shield(CX, CY, R(250), t, ringIn * (travelling ? .45 : 1) * live);
+  // LA sphère de Jarvis : arrive du 2e écran, se pose au centre et respire
+  const docked = !travelling;
+  const orbR = R(150) * (docked ? 1 + .025 * Math.sin(t * 2.2) + .08 * Math.exp(-impact * 5) : lerp(.62, .9, k));
+  const ox2 = docked ? CX : tx, oy2 = docked ? CY : ty;
+  const orbFade = (travelling ? lerp(.75, 1, k) : 1) * (1 - ease(seg(t, D - .55, D - .25)));
+  const lvl = docked ? .12 + .55 * Math.exp(-impact * 4) + .05 * Math.sin(t * 3) ** 2 : .35 + .3 * k;
+  if (ORB.ok) {
+    if (travelling && onScreen) for (let gI = 3; gI >= 1; gI--) {          // traînée : la sphère en plus pâle derrière
+      const kk = clamp(k - gI * .035); ORB.draw(TX(kk), TY(kk), orbR * (1 - gI * .06), t, { fade: .14 * (4 - gI) / 3, lvl, add: true, rot: t * 1.4 });
     }
-    if (onScreen || !travelling) {
-    ctx.save(); ctx.translate(px, py); ctx.rotate(travelling ? -t * .9 : -t * .12);
-    ctx.globalAlpha = (travelling ? lerp(.7, 1, k) : 1) * (1 - ease(seg(t, D - .55, D - .25)));
-    ctx.drawImage(img, -size / 2, -size / 2, size, size);
-    if (docked) { ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha *= .35 + .25 * Math.sin(t * 3) ** 2; ctx.filter = "blur(10px)"; ctx.drawImage(img, -size / 2, -size / 2, size, size); ctx.filter = "none"; }
-    ctx.restore();
-    }
-    // pendant le trajet : anneau de progression + pourcentage qui suivent le rond
-    if (travelling && onScreen) {
-      const rr = size * .62;
-      ctx.save(); ctx.strokeStyle = rgba(C.steel, .5); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(px, py, rr, 0, TAU); ctx.stroke();
-      ctx.strokeStyle = C.ion; ctx.lineWidth = 3; ctx.lineCap = "round"; ctx.shadowColor = C.ion; ctx.shadowBlur = 16;
-      ctx.beginPath(); ctx.arc(px, py, rr, pa, pa + TAU * Math.max(.001, k)); ctx.stroke(); ctx.restore();
-    }
+    if (onScreen || docked) ORB.draw(ox2, oy2, orbR, t, { fade: orbFade, lvl, rot: travelling ? t * 1.4 : .3 * t + 1.4, think: travelling ? 1 : 0 });
+  } else if (img.complete && img.naturalWidth && (onScreen || docked)) {     // secours : ancienne image
+    const size = orbR * 2.7;
+    ctx.save(); ctx.translate(ox2, oy2); ctx.rotate(-t * .4); ctx.globalAlpha = orbFade; ctx.drawImage(img, -size / 2, -size / 2, size, size); ctx.restore();
   }
-  // pourcentage : sous le rond pendant le trajet, puis « NOYAU INSTALLÉ » au centre, qui s'efface
+  orbLabel(ox2, oy2 + orbR * 1.3, (onScreen || docked ? 1 : 0) * live * (travelling ? .7 : 1) * (1 - ease(seg(t, D - .6, D - .3))));
+  // pendant le trajet : anneau de progression + pourcentage qui suivent la sphère
   if (travelling && onScreen) {
-    const s = lerp(.5, .8, k), py = ty + 2 * coreR * s * .62 + 46;
-    text(`${Math.round(k * 100)} %`, tx, py, 34, C.ice, { align: "center", font: "display", weight: 500, glow: 14 });
-    text("CHARGEMENT", tx, py + 34, 12, C.ion, { align: "center", spacing: 3 });
-  } else if (!travelling) {
-    const a = 1 - ease(seg(t, T_CHARGE + .5, T_CHARGE + 1));
-    if (a > 0) {
-      text("100 %", CX, CY - 8, 64, C.ice, { align: "center", font: "display", weight: 300, alpha: a, glow: 22 });
-      text("NOYAU INSTALLÉ", CX, CY + 46, 13, C.ion, { align: "center", spacing: 3, alpha: a });
-    }
+    const rr = orbR * 1.3;
+    ctx.save(); ctx.strokeStyle = rgba(C.steel, .5); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(tx, ty, rr, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = C.ion; ctx.lineWidth = 3; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.arc(tx, ty, rr, pa, pa + TAU * Math.max(.001, k)); ctx.stroke(); ctx.restore();
+    text(`${Math.round(k * 100)} %`, tx, ty - rr - 40, 34, C.ice, { align: "center", font: "display", weight: 500, glow: 12 });
+    text("CHARGEMENT DU NOYAU", tx, ty - rr - 12, 12, C.ion, { align: "center", spacing: 3 });
+  } else if (docked) {
+    const a = 1 - ease(seg(t, T_CHARGE + .7, T_CHARGE + 1.2));
+    if (a > 0) text("NOYAU INSTALLÉ · 100 %", CX, CY - R(300) - 38, 14, C.ion, { align: "center", spacing: 4, alpha: a, weight: 500 });
   }
-  // impact : onde + éclair
-  if (impact > 0 && impact < 1) {
-    ctx.save(); ctx.globalCompositeOperation = "lighter";
-    [0, .18].forEach(d => { const k = clamp((impact - d) / (1 - d)); if (k <= 0) return; ctx.strokeStyle = rgba(C.ion, .8 * (1 - k)); ctx.lineWidth = 6 * (1 - k) + 1; ctx.shadowColor = C.ion; ctx.shadowBlur = 30; ctx.beginPath(); ctx.arc(CX, CY, lerp(220, 980, out3(k)), 0, TAU); ctx.stroke(); });
-    const fl = ctx.createRadialGradient(CX, CY, 0, CX, CY, 900); fl.addColorStop(0, rgba(C.ice, .5 * Math.exp(-impact * 6))); fl.addColorStop(1, rgba(C.ion, 0));
-    ctx.fillStyle = fl; ctx.fillRect(0, 0, 1920, 1080); ctx.restore();
+  // arrivée : onde de choc hexagonale + tunnel d'hexagones (plus d'éclair blanc)
+  hexWave(CX, CY, impact, 1);
+  if (docked && impact < 1) {
+    ctx.save();
+    for (let q = 0; q < 5; q++) { const u = clamp(impact * 1.3 - q * .12), Rr = lerp(160, 700, out3(u)), al = Math.sin(Math.PI * u) * .35;
+      if (al <= 0) continue; ctx.strokeStyle = rgba(C.ion, al); ctx.lineWidth = 1.5; ctx.beginPath();
+      for (let j = 0; j <= 6; j++) { const an = j * TAU / 6 + q * .2 + t * .2; j ? ctx.lineTo(CX + Math.cos(an) * Rr, CY + Math.sin(an) * Rr) : ctx.moveTo(CX + Math.cos(an) * Rr, CY + Math.sin(an) * Rr); }
+      ctx.stroke(); }
+    ctx.restore();
   }
 
   // ---------- titre (décodage lettre par lettre)
-  const TITLE = "J.A.R.V.I.S";
+  const TITLE = `BIENVENUE, ${USER}`;                   // le nom J.A.R.V.I.S est déjà sous la sphère
   const tt = t - (T_CHARGE + .45);
   if (tt > 0) {
     const titleA = live;
     let shown = "";
-    [...TITLE].forEach((ch, i) => { const k = tt - i * .06; shown += k < 0 ? " " : k < .32 ? GLYPHS[Math.floor((t * 30 + i * 7) % GLYPHS.length)] : ch; });
-    text(shown, CX, 862, 62, C.ice, { align: "center", font: "display", weight: 500, spacing: 22, alpha: titleA, glow: 18 });
-    const sub = `BIENVENUE, ${USER}`, k2 = clamp((tt - .9) * 18 / sub.length);
-    text(sub.slice(0, Math.round(k2 * sub.length)), CX, 918, 20, C.ember, { align: "center", spacing: 6, alpha: titleA, weight: 500 });
-    text("TOUS LES SYSTÈMES SONT EN LIGNE", CX, 954, 12, "#6f98aa", { align: "center", spacing: 3, alpha: titleA * ease(seg(tt, 1.6, 2.2)) });
+    [...TITLE].forEach((ch, i) => { const k = tt - i * .05; shown += k < 0 ? " " : ch === " " || ch === "," ? ch : k < .32 ? GLYPHS[Math.floor((t * 30 + i * 7) % GLYPHS.length)] : ch; });
+    text(shown, CX, 870, 46, C.ice, { align: "center", font: "display", weight: 500, spacing: 14, alpha: titleA, glow: 14 });
+    text("PROTOCOLE DE RÉVEIL TERMINÉ  ·  TOUS LES SYSTÈMES SONT EN LIGNE", CX, 922, 13, C.ember, { align: "center", spacing: 3, alpha: titleA * ease(seg(tt, 1.0, 1.6)), weight: 500 });
   }
 
   // ---------- panneau gauche : séquence
@@ -423,11 +516,13 @@ function frame(t) {
   }
   // graphes
   const fk = seg(t, 2.0, 2.7) * live;
-  const fe = panel(1340, 500, 470, 250, fk, "FLUX DE DONNÉES");
+  const fe = panel(1340, 500, 470, 250, fk, "LIAISON SATELLITE  ·  7/7");
   if (fe) {
+    miniGlobe(1460, 640, 70, t, fe);
     const shift = Math.floor(t * 8);
-    smoothLine(graphA, 1364, 560, 422, 70, C.ion, fe, shift);
-    smoothLine(graphB, 1364, 650, 422, 70, C.ember, fe * .9, shift + 11);
+    smoothLine(graphA, 1570, 585, 216, 50, C.ion, fe, shift);
+    smoothLine(graphB, 1570, 660, 216, 50, C.ember, fe * .9, shift + 11);
+    text("HOLO-TABLE PRÊTE", 1786, 728, 11, C.ion, { align: "right", spacing: 2, alpha: fe * ease(seg(t, 3.2, 3.8)) });
   }
 
   // ---------- onde audio en bas
@@ -453,9 +548,10 @@ function frame(t) {
     const k = seg(t, D - .5, D - .1);
     if (k > 0) {
       ctx.save(); ctx.globalCompositeOperation = "lighter";
-      const w = 1920 * out3(k), a = Math.sin(Math.PI * k);
-      const g = ctx.createLinearGradient(CX - w / 2, 0, CX + w / 2, 0); g.addColorStop(0, rgba(C.ion, 0)); g.addColorStop(.5, rgba(C.ice, a)); g.addColorStop(1, rgba(C.ion, 0));
-      ctx.fillStyle = g; ctx.fillRect(CX - w / 2, CY - 1.5, w, 3); ctx.restore();
+      const a = Math.sin(Math.PI * k), Rr = lerp(420, 8, out3(k));
+      ctx.strokeStyle = rgba(C.ion, .7 * a); ctx.lineWidth = 2; ctx.beginPath();
+      for (let j = 0; j <= 6; j++) { const an = j * TAU / 6 + Math.PI / 6 + k * 2; j ? ctx.lineTo(CX + Math.cos(an) * Rr, CY + Math.sin(an) * Rr) : ctx.moveTo(CX + Math.cos(an) * Rr, CY + Math.sin(an) * Rr); }
+      ctx.stroke(); ctx.restore();
     }
   }
   // fondu final
@@ -477,6 +573,7 @@ function frameSide(t) {
   ctx.save(); ctx.globalAlpha = .2 * gridK; ctx.strokeStyle = C.steel;
   for (let i = -16; i <= 16; i++) { ctx.beginPath(); ctx.moveTo(CX + i * 34, 760); ctx.lineTo(CX + i * 210, 1080); ctx.stroke(); }
   ctx.restore();
+  hexBg(t, gridK);
   ctx.save(); dust.forEach(p => { const y = (p.y - t * p.v + 1080) % 1080; ctx.globalAlpha = p.a * live * gridK; ctx.fillStyle = C.ion; ctx.beginPath(); ctx.arc(p.x, y, p.r, 0, TAU); ctx.fill(); }); ctx.restore();
   const frameK = ease(seg(t, .2, 1.2)) * live;
   ctx.save(); ctx.globalAlpha = frameK; ctx.strokeStyle = rgba(C.ion, .6); ctx.lineWidth = 2;
@@ -494,6 +591,7 @@ function frameSide(t) {
     const a0 = spin * v * 2 + i * 1.7;
     for (let q = 0; q < 3; q++) arc(r, a0 + q * TAU / 3, a0 + q * TAU / 3 + len * .5, col, w, dockA * .8);
   });
+  shield(CX, CY, 250, t, dockA * .6);
   // rail vers la droite (vers l'écran principal)
   const railA = (1 - ease(seg(t, T_CHARGE + .2, T_CHARGE + .9))) * ease(seg(t, 0, .35));
   const TX = k2 => lerp(CX, 2200, clamp(k2 / .5)), TY = k2 => CY - 60 * Math.sin(Math.PI * clamp(k2 / .5) / 2);
@@ -508,15 +606,19 @@ function frameSide(t) {
     text("TRANSFERT DU NOYAU  →  ÉCRAN PRINCIPAL", 1880, CY + 270, 12, C.ion, { align: "right", spacing: 2.5, alpha: railA * .9, weight: 500 });
   }
   // le noyau qui s'en va
-  if (on && img.complete && img.naturalWidth) {
+  if (on) {
     ctx.save(); ctx.globalCompositeOperation = "lighter";
     stream.forEach(p => { const back = ((p.d - 380) / 520) * .18; const kk = clamp(k - back); const x = TX(kk) - 20, y = TY(kk) + (p.a / TAU - .5) * 120 * (back / .18);
       ctx.strokeStyle = rgba(C.ion, .6 * (1 - back / .18)); ctx.lineWidth = p.w; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 30 * p.s, y); ctx.stroke(); });
     ctx.restore();
-    const size = 2 * 205 * lerp(.6, .7, k * 2);
-    for (let gI = 3; gI >= 1; gI--) { const kk = clamp(k - gI * .03), gs = size * (1 - gI * .06);
-      ctx.save(); ctx.globalAlpha = .12 * (4 - gI) / 3; ctx.translate(TX(kk), TY(kk)); ctx.rotate(-t * .9); ctx.drawImage(img, -gs / 2, -gs / 2, gs, gs); ctx.restore(); }
-    ctx.save(); ctx.translate(tx, ty); ctx.rotate(-t * .9); ctx.drawImage(img, -size / 2, -size / 2, size, size); ctx.restore();
+    const orbR = 150 * lerp(.9, .75, k * 2), size = orbR * 2.1;
+    if (ORB.ok) {
+      for (let gI = 3; gI >= 1; gI--) { const kk = clamp(k - gI * .03); ORB.draw(TX(kk), TY(kk), orbR * (1 - gI * .06), t, { fade: .14 * (4 - gI) / 3, add: true, lvl: .4, rot: t * 1.4 }); }
+      ORB.draw(tx, ty, orbR, t, { lvl: .4, rot: t * 1.4, think: 1 });
+    } else if (img.complete && img.naturalWidth) {
+      ctx.save(); ctx.translate(tx, ty); ctx.rotate(-t * .9); ctx.drawImage(img, -size * .65, -size * .65, size * 1.3, size * 1.3); ctx.restore();
+    }
+    orbLabel(tx, ty + orbR * 1.3, .7);
     const rr = size * .62;
     ctx.save(); ctx.strokeStyle = C.ion; ctx.lineWidth = 3; ctx.lineCap = "round"; ctx.shadowColor = C.ion; ctx.shadowBlur = 16;
     ctx.beginPath(); ctx.arc(tx, ty, rr, -Math.PI / 2, -Math.PI / 2 + TAU * Math.max(.001, k)); ctx.stroke(); ctx.restore();
@@ -543,7 +645,7 @@ function frameSide(t) {
   const fade = seg(t, D - .25, D);
   if (fade > 0) { ctx.fillStyle = rgba(C.void, fade); ctx.fillRect(-ox / sc, -oy / sc, W / sc, H / sc); }
 }
-const render = t => ROLE === "side" ? frameSide(t) : frame(t);
+const render = t => { ORB.begin(); ROLE === "side" ? frameSide(t) : frame(t); };
 
 // ---------- lecture
 let start = null, running = false;
@@ -561,7 +663,7 @@ function play() {
   start = performance.now(); running = true; requestAnimationFrame(loop);
 }
 const ready = Promise.all([document.fonts ? document.fonts.load('500 40px "Oxanium"').catch(() => {}) : 0,
-                           img.decode ? img.decode().catch(() => {}) : 0]);
+                           img.decode ? img.decode().catch(() => {}) : 0, ORB.init()]);
 if (AUTO) {
   // lancé par Jarvis : écran noir, on prévient qu'on est prêt, puis départ à l'heure commune (t0) donnée par Jarvis
   veil.hidden = true; document.body.style.cursor = "none";

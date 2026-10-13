@@ -17,6 +17,11 @@ et donne les actions à faire (fichiers à lancer) clairement.
 ## Architecture
 - `jarvis.py` — point d'entrée : attend « salut Jarvis », intro (`intro_web.py` + `intro.html`), ouvre FACEIT, Discord
   sur le 2e écran, musique locale pile à la fin de l'intro, puis lance l'assistant. Ferme les anciens Jarvis au démarrage.
+  Intro (refaite) : LA sphère du bureau (même shader `orb_sphere.glsl`, servi par `intro_web.py`, WebGL2 sur un 2e
+  canvas `#g`, `ORB.draw(x, y, r, t, {fade, lvl, add})` en coordonnées 1920×1080) + « J.A.R.V.I.S » dessous ; elle
+  part du 2e écran et se pose au centre ; style plan de travail : grille hexagonale, bouclier holo, onde hexagonale
+  (plus d'éclair blanc), panneau FACEIT gardé, panneau « liaison satellite » avec mini-globe. Secours : ancienne
+  image `ROND` si WebGL indisponible. dpr ≤ 1,5.
 - `superviseur.py` — fait tourner Jarvis caché et le relance s'il s'arrête (installé par `installer_demarrage.bat`).
 - `assistant.py` — le cœur : `Voice` (ElevenLabs / Piper / Windows, interruption quand on dit « Jarvis »),
   `Gemini` (REST, modèles de secours), `Actions` (tous les outils `do_*`), `Brain` (voie express sans IA + boucle

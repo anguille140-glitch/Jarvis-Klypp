@@ -100,6 +100,8 @@ class WebIntro:
                     t0 = sync.poll(role)
                     body = json.dumps({"t0": t0 * 1000 if t0 else None}).encode()
                     ctype = "application/json"
+                elif url.path.endswith("/orb_sphere.glsl"):   # la sphère du bureau, dessinée dans l'intro
+                    body, ctype = (BASE / "orb_sphere.glsl").read_bytes(), "text/plain; charset=utf-8"
                 elif url.path.endswith("/faceit_niveau.png"):
                     icon = BASE / "faceit_niveau.png"          # icône de niveau ajoutée par l'utilisateur
                     if not icon.is_file():
