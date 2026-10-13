@@ -209,16 +209,30 @@ def pick_input_device() -> tuple[int, int]:
 
 
 def wait_for_launch() -> bool:
-    """Lancement : « salut Jarvis » (défaut) ou double clap (JARVIS_LANCEMENT=clap dans .env).
-    Renvoie False si on a dit « fin de programme »."""
-    if (os.environ.get("JARVIS_LANCEMENT") or "mot").strip().lower() != "clap":
+    """Lancement : « salut Jarvis » (et d'autres phrases), double clap, icône JARVIS du bureau, Ctrl+Alt+J,
+    ou ton visage reconnu quand tu reviens au PC.
+    JARVIS_LANCEMENT=clap (seulement le clap) | voix (pas de clap). Renvoie False si on a dit « fin de programme »."""
+    mode = (os.environ.get("JARVIS_LANCEMENT") or "mot").strip().lower()
+    if mode != "clap":
+        watcher = None
         try:
             import assistant
+            import commandes_bureau
 
+            try:
+                import accueil                       # visage reconnu à ton retour -> Jarvis se lance
+                watcher = accueil.start(lambda _t: None, USER_NAME,
+                                        on_recognized=lambda: commandes_bureau.request("lancer"))
+            except Exception:  # noqa: BLE001
+                log.debug("Lancement par le visage indisponible", exc_info=True)
             idx, rate = pick_input_device()
-            return assistant.wait_launch_word(idx, rate)
+            clap = None if mode in ("voix", "mot_seul") else ClapDetector
+            return assistant.wait_launch_word(idx, rate, clap_factory=clap, rms=rms if clap else None)
         except (ImportError, FileNotFoundError) as e:
             log.warning("Lancement à la voix impossible (%s) : je repasse au double clap.", e)
+        finally:
+            if watcher is not None:
+                watcher.stopped.set()
     wait_for_double_clap()
     return True
 

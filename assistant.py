@@ -2404,6 +2404,15 @@ WAKE_MAYBE = 0.68      # entre les deux : on demande à Gemini de vérifier (il 
 BARGE_SCORE = 0.9      # pour couper Jarvis pendant qu'il parle, il faut un « Jarvis » bien net
 
 
+def _desk_close() -> bool:
+    """Icône « Éteindre JARVIS » ou Ctrl+Alt+Fin."""
+    try:
+        import commandes_bureau
+        return commandes_bureau.take("fermer")
+    except Exception:  # noqa: BLE001
+        return False
+
+
 class MicLost(RuntimeError):
     pass
 
@@ -2542,9 +2551,13 @@ class Ear:
         last_dbg = ""
         while True:
             deadline = followup_until if followup_until > time.monotonic() else None
-            pcm, clap = self._read_chunk(deadline)
+            pcm, clap = self._read_chunk(deadline if deadline is not None else time.monotonic() + 0.5)
+            if _desk_close():
+                return "stop", 1.0
             if pcm is None:
-                return None
+                if deadline is not None and time.monotonic() > deadline:
+                    return None
+                continue
             if clap:
                 return "clap", 1.0
             speech = self._is_speech(pcm)
@@ -2648,14 +2661,28 @@ def phrase_heard(text: str, phrase: str, words: set[str]) -> bool:
     return all(_has_word(toks, w) for w in others if w not in small)
 
 
-def is_stop(text: str) -> bool:
-    """« fin de programme » (ou JARVIS_MOT_FIN dans .env). Stricte : on ne veut pas fermer Jarvis par erreur."""
+_JV = r"(?:jarvis|jarvi|jarvice|charvis|djarvis|j arvis)"
+STOP_EXTRA_RE = re.compile(
+    r"\b(?:au revoir|bonne nuit|a plus|a plus tard|a bientot|ciao|bye)\b(?: \w+)? " + _JV + r"\b|"
+    r"^" + _JV + r" (?:au revoir|bonne nuit|a plus tard|a bientot)$|"
+    r"\b" + _JV + r"\b.{0,12}\b(?:eteins toi|eteint toi|desactive toi|deconnecte toi|repose toi|mets toi hors ligne|"
+    r"met toi hors ligne|arrete toi|ferme toi)\b|"
+    r"\b(?:eteins toi|desactive toi|deconnecte toi|arrete toi)\b.{0,6}\b" + _JV + r"\b|"
+    r"\b(?:deconnexion|extinction) (?:de |d )?" + _JV + r"\b")
+
+
+def is_stop(text: str, strict: bool = False) -> bool:
+    """« fin de programme » (ou JARVIS_MOT_FIN dans .env), et en session « au revoir Jarvis », « bonne nuit
+    Jarvis », « Jarvis, éteins-toi »... strict=True (Jarvis en sommeil) : seulement « fin de programme »."""
     if not text:
         return False
+    t = norm(text)
     phrase = _env("JARVIS_MOT_FIN", "fin de programme")
     if norm(phrase) == "fin de programme":
-        return re.search(r"\bfin (?:de |du |d )?programmes?\b", norm(text)) is not None
-    return phrase_heard(text, phrase, set())
+        hit = re.search(r"\bfin (?:de |du |d )?programmes?\b", t) is not None
+    else:
+        hit = phrase_heard(text, phrase, set())
+    return hit or (not strict and STOP_EXTRA_RE.search(t) is not None)
 
 
 def phrase_score(text: str, phrase: str, words: set[str]) -> float:
@@ -2676,37 +2703,76 @@ def phrase_score(text: str, phrase: str, words: set[str]) -> float:
     return best
 
 
-def wait_launch_word(device: int, rate: int) -> bool:
+LAUNCH_PHRASES = ["salut jarvis", "bonjour jarvis", "bonsoir jarvis", "hello jarvis", "coucou jarvis",
+                  "jarvis reveille toi", "reveille toi jarvis", "debout jarvis", "jarvis debout", "allume toi jarvis",
+                  "jarvis allume toi", "jarvis au travail", "jarvis on y va", "jarvis initialisation"]
+
+
+def wait_launch_word(device: int, rate: int, clap_factory=None, rms=None) -> bool:
     """Attend la phrase de lancement (« salut Jarvis » par défaut, ou JARVIS_MOT_LANCEMENT dans .env).
     Renvoie False si on a dit « fin de programme » à la place."""
-    phrase = _env("JARVIS_MOT_LANCEMENT", "salut jarvis")
+    phrases = [p.strip() for p in _env("JARVIS_MOT_LANCEMENT", "salut jarvis").split(",") if p.strip()]
+    phrases += [p for p in LAUNCH_PHRASES if p not in phrases]
+    phrase = phrases[0]
     words = {norm(w) for w in _env("JARVIS_MOTS_REVEIL", DEFAULT_WAKE).split(",") if w.strip()}
-    ear = Ear(device, rate)
-    need = WAKE_SURE if norm(phrase) == "jarvis" else 0.8
-    log.info("J'écoute. Dis « %s » pour lancer Jarvis. Ctrl+C pour arrêter.", phrase)
+    ear = Ear(device, rate, clap_factory, rms)
+    if clap_factory is not None and rms is not None and ear.clap is None:
+        ear.clap = clap_factory()                         # le double clap marche aussi pour lancer Jarvis
+    import commandes_bureau
+    commandes_bureau.clear()
+    log.info("J'écoute. Dis « %s » (ou %s), tape deux fois dans tes mains, ou Ctrl+Alt+J. Ctrl+C pour arrêter.",
+             phrase, ", ".join(f"« {p} »" for p in phrases[1:4]))
     with sd.InputStream(device=device, samplerate=rate, channels=1, dtype="float32",
                         blocksize=ear.block, callback=ear._cb):
         while True:
-            pcm, _ = ear._read_chunk(None)
+            pcm, clap = ear._read_chunk(time.monotonic() + 0.4)
+            if commandes_bureau.take("lancer"):
+                log.info("Lancement demandé (icône du bureau, Ctrl+Alt+J ou visage reconnu).")
+                return True
+            commandes_bureau.take("fermer")               # déjà en sommeil : rien à fermer
+            if clap:
+                log.info("Double clap : lancement.")
+                return True
             if pcm is None or not pcm.size:
                 continue
             text, final = ear._vosk(pcm)
             if text and DEBUG:
                 log.info("Entendu (Vosk%s) : %s", "" if final else ", en cours", text)
-            if text and phrase_score(text, phrase, words) >= need:
+            if text and any(phrase_score(text, p, words) >= (WAKE_SURE if norm(p) == "jarvis" else 0.8) for p in phrases):
                 log.info("Mot de lancement reconnu : %s", text)
                 return True
-            if final and is_stop(text):
+            if final and is_stop(text, strict=True):
                 log.info("Fin de programme demandée.")
                 return False
             if final:
                 ear.rec.Reset()
 
 
-def _shutdown(voice: "Voice", status) -> int:
+def _outro(user: str):
+    """Animation de sortie plein écran (style de l'intro) : la sphère se replie, « À BIENTÔT ». None si impossible."""
+    if _env("JARVIS_ANIMATION_SORTIE", "oui").lower() in ("non", "0", "off"):
+        return None
+    try:
+        import intro_web
+        u = ctypes.windll.user32
+        rect = (0, 0, u.GetSystemMetrics(0), u.GetSystemMetrics(1))
+        o = intro_web.WebIntro(rect, None, {"user": user, "mode": "sortie"}, 4.2)
+        return o if o.start(timeout=8.0) else None
+    except Exception:  # noqa: BLE001
+        log.debug("Animation de sortie indisponible", exc_info=True)
+        return None
+
+
+def _shutdown(voice: "Voice", status, user: str = "Klypp") -> int:
     log.info("Fin de programme demandée.")
     status("speaking")
+    outro = _outro(user)
     voice.say("Fin de programme. À bientôt, monsieur.")
+    if outro is not None:
+        try:
+            outro.finish()                                # attend la fin de l'animation, fondu, fermeture
+        except Exception:  # noqa: BLE001
+            outro.close()
     status("idle", "HORS LIGNE")
     return STOP_EXIT
 
@@ -2905,7 +2971,7 @@ def run(device: int, rate: int, user: str = "Monsieur", clap_factory=None, rms=N
                 continue
             mode, score = got
             if mode == "stop":
-                return _shutdown(voice, status)
+                return _shutdown(voice, status, user)
             # « suite » (pas de Jarvis) ou mot mal reconnu : Gemini vérifie que ça lui est adressé
             music_on = _music_playing()
             # musique en fond : « Jarvis » est moins net -> on fait confiance au mot à moitié reconnu
@@ -2927,7 +2993,7 @@ def run(device: int, rate: int, user: str = "Monsieur", clap_factory=None, rms=N
                 ear.reset()
                 continue
             if is_stop(heard):                                # « Jarvis, fin de programme »
-                return _shutdown(voice, status)
+                return _shutdown(voice, status, user)
             log.info("Demande : %s", heard)
             try:
                 import plan_de_travail

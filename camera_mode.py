@@ -153,11 +153,13 @@ def _browser() -> str | None:
 
 
 class CameraMode:
-    def __init__(self, say=None, user: str = "Klypp", mode: str = "controle", on_welcome=None) -> None:
+    def __init__(self, say=None, user: str = "Klypp", mode: str = "controle", on_welcome=None,
+                 on_auth=None, on_end=None) -> None:
         self.say = say or (lambda _t: None)
         self.user = user
         self.mode = mode                                  # « controle » (gestes) ou « accueil » (scan d'arrivée)
         self.on_welcome = on_welcome                      # accueil : phrase de bienvenue (fournie par Jarvis)
+        self.on_auth, self.on_end = on_auth, on_end       # accueil : résultat du scan, fin de l'animation
         self.server: http.server.ThreadingHTTPServer | None = None
         self.proc: subprocess.Popen | None = None
         self.mouse: Mouse | None = None
@@ -300,9 +302,13 @@ class CameraMode:
                 else:
                     msg = "Visage non reconnu."
                 log.info("Scan d'arrivée : %s", "reconnu" if d.get("ok") else "sans profil" if d.get("noprofile") else "refusé")
+                if self.on_auth:
+                    self.on_auth(bool(d.get("ok")))
                 threading.Thread(target=self.say, args=(msg,), daemon=True).start()
             elif d.get("t") == "fin":
                 threading.Thread(target=self.stop, daemon=True).start()
+                if self.on_end:
+                    self.on_end()
             elif d.get("t") == "error":
                 log.warning("Scan d'arrivée : %s", d.get("msg"))
             return

@@ -15,10 +15,14 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
+rem icones du bureau : JARVIS (Ctrl+Alt+J) et Eteindre JARVIS (Ctrl+Alt+Fin)
+".venv\Scripts\python.exe" creer_raccourcis.py
 start "" ".venv\Scripts\pythonw.exe" superviseur.py
 echo.
 echo C'est fait :
-echo  - Jarvis tourne maintenant en arriere-plan, sans fenetre. Dis "salut Jarvis".
+echo  - Jarvis tourne maintenant en arriere-plan, sans fenetre. Dis "salut Jarvis" (ou "bonjour Jarvis", "Jarvis reveille-toi"...),
+echo    tape deux fois dans tes mains, double-clique l'icone JARVIS du bureau ou fais Ctrl+Alt+J.
+echo  - Pour l'eteindre : "Jarvis, fin de programme" / "au revoir Jarvis", l'icone Eteindre JARVIS ou Ctrl+Alt+Fin.
 echo  - Il se lancera tout seul a chaque demarrage de Windows.
 echo  - S'il plante ou perd le micro, il redemarre tout seul.
 echo  - Journal : jarvis.log    Arret : arreter_jarvis.bat    Retirer : retirer_demarrage.bat

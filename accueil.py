@@ -55,7 +55,7 @@ def screen_locked() -> bool:
 
 
 class Accueil:
-    def __init__(self, say, user: str, camera_busy=lambda: False, welcome=None) -> None:
+    def __init__(self, say, user: str, camera_busy=lambda: False, welcome=None, on_recognized=None) -> None:
         self.say = say
         self.user = user
         self.camera_busy = camera_busy                    # le mode caméra (gestes) est-il ouvert ?
@@ -63,10 +63,17 @@ class Accueil:
         self.absence = max(1.0, float(_env("JARVIS_ACCUEIL_ABSENCE", "5"))) * 60
         self.last_scan = time.monotonic()                 # pas de scan juste après le démarrage (il y a l'intro)
         self.cam = None
+        self.on_recognized = on_recognized                # Jarvis en sommeil : visage reconnu -> on le lance
+        self.recognized = False
+        self.stopped = threading.Event()
+        if on_recognized:
+            self.last_scan = -1e9                         # en sommeil : le premier retour déclenche le scan
 
     def _game(self) -> bool:
         try:
             import mode_jeu
+            if self.on_recognized:                        # en sommeil, la surveillance des jeux ne tourne pas
+                return mode_jeu.ACTIF.is_set() or mode_jeu.detect() is not None
             return mode_jeu.ACTIF.is_set()
         except Exception:  # noqa: BLE001
             return False
@@ -75,13 +82,23 @@ class Accueil:
         import camera_mode
         if self.cam and self.cam.active:
             return "Scan déjà en cours."
-        self.cam = camera_mode.CameraMode(say=self.say, user=self.user, mode="accueil", on_welcome=self.welcome)
+        self.recognized = False
+
+        def auth(ok: bool) -> None:
+            self.recognized = ok
+
+        def end() -> None:
+            if self.recognized and self.on_recognized and not self.stopped.is_set():
+                self.on_recognized()
+
+        self.cam = camera_mode.CameraMode(say=self.say, user=self.user, mode="accueil", on_welcome=self.welcome,
+                                          on_auth=auth, on_end=end)
         self.last_scan = time.monotonic()
         return self.cam.start()
 
     def _loop(self) -> None:
         away = False
-        while True:
+        while not self.stopped.is_set():
             time.sleep(1.5)
             try:
                 idle = idle_seconds()
@@ -102,10 +119,13 @@ class Accueil:
                 log.debug("Scan d'arrivée : erreur", exc_info=True)
 
 
-def start(say, user: str, camera_busy=lambda: False, welcome=None) -> Accueil | None:
+def start(say, user: str, camera_busy=lambda: False, welcome=None, on_recognized=None) -> Accueil | None:
+    """on_recognized : Jarvis en sommeil -> ton visage reconnu à ton retour le lance (JARVIS_LANCEMENT_VISAGE=non)."""
     if os.name != "nt" or _env("JARVIS_ACCUEIL").lower() in ("non", "0", "off", "false"):
         return None
-    a = Accueil(say, user, camera_busy, welcome)
+    if on_recognized and _env("JARVIS_LANCEMENT_VISAGE").lower() in ("non", "0", "off", "false"):
+        return None
+    a = Accueil(say, user, camera_busy, welcome, on_recognized)
     threading.Thread(target=a._loop, name="accueil", daemon=True).start()
     log.info("Scan d'arrivée prêt (après %d min d'absence).", int(a.absence // 60))
     return a

@@ -22,6 +22,13 @@ et donne les actions à faire (fichiers à lancer) clairement.
   part du 2e écran et se pose au centre ; style plan de travail : grille hexagonale, bouclier holo, onde hexagonale
   (plus d'éclair blanc), panneau FACEIT gardé, panneau « liaison satellite » avec mini-globe. Secours : ancienne
   image `ROND` si WebGL indisponible. dpr ≤ 1,5.
+- LANCER / FERMER : phrases de lancement `LAUNCH_PHRASES` (+ `JARVIS_MOT_LANCEMENT`, liste), double clap
+  (`wait_launch_word(clap_factory, rms)`), icônes du bureau « JARVIS » / « Éteindre JARVIS » + raccourcis
+  Ctrl+Alt+J / Ctrl+Alt+Fin (`creer_raccourcis.py` lancé par `installer_demarrage.bat`, `jarvis_bureau.py` dépose
+  un « mot » dans `.cache/commandes`, lu par `commandes_bureau.take`), visage reconnu en sommeil
+  (`accueil.start(on_recognized=…)` dans `wait_for_launch`). Arrêt : `is_stop` (« fin de programme », « au revoir /
+  bonne nuit Jarvis », « Jarvis éteins-toi »… ; en sommeil `strict=True` : seulement « fin de programme ») ;
+  `_shutdown` joue l'animation de sortie (`intro.html?mode=sortie`, `frameOutro`) via `intro_web.WebIntro`.
 - `superviseur.py` — fait tourner Jarvis caché et le relance s'il s'arrête (installé par `installer_demarrage.bat`).
 - `assistant.py` — le cœur : `Voice` (ElevenLabs / Piper / Windows, interruption quand on dit « Jarvis »),
   `Gemini` (REST, modèles de secours), `Actions` (tous les outils `do_*`), `Brain` (voie express sans IA + boucle
