@@ -925,7 +925,7 @@ class Workspace:
             return "ok"
         if t == "adresse" and a.get("texte"):          # corrigée depuis le plan de travail
             out = set_address(str(a["texte"])[:200])
-            if out.startswith("OK"):
+            if out.startswith("OK") and a.get("rejouer", True):
                 self.boot_seq += 1                         # le globe rezoome sur la bonne position
                 note("jarvis", "Position corrigée. Je recentre le globe.")
             else:

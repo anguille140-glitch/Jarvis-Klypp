@@ -691,35 +691,65 @@ function stepDynamic(t, dt) {
 }
 
 /* ---------- interface publique ---------- */
+H.gen = 0;
+const step = (t) => { if (H.onStep) H.onStep(t); };
 H.init = async function (opts) {
   if (H.ready || H.loading) return H.loading;
+  const gen = ++H.gen, live = () => gen === H.gen;        // une relocalisation annule les anciens chargements
   H.opts = opts; H.lat0 = +opts.lat; H.lon0 = +opts.lon; H.KX = 111.32 * Math.cos(H.lat0 * D2R);
   H.loading = (async () => {
     try {
       for (const f of LIBS) if (!(f === "three.min.js" && window.THREE)) await loadScript("web/three/" + f);
-      const zoneP = (async () => { for (let i = 0; i < 200; i++) {     // les données OSM arrivent parfois bien après (serveur chargé)
-        try { const z = await (await fetch(`zone?lat=${H.lat0}&lon=${H.lon0}`, { cache: "no-store" })).json(); if (z.etat === "ok") return z; } catch (e) { /* on réessaie */ }
-        await new Promise((r) => setTimeout(r, i < 3 ? 1500 : 6000)); } return null; })();
+      const poll = (what, wait) => (async () => { for (let i = 0; i < 200 && live(); i++) {   // les données OSM arrivent parfois bien après
+        try { const z = await (await fetch(`${what}?lat=${H.lat0}&lon=${H.lon0}`, { cache: "no-store" })).json(); if (z.etat === "ok") return z; } catch (e) { /* on réessaie */ }
+        await new Promise((r) => setTimeout(r, i < 3 ? 1500 : wait)); } return null; })();
+      const zoneP = poll("zone", 6000);
+      step("RELIEF");
       await loadDEM();
-      const routesP = (async () => { for (let i = 0; i < 200; i++) {
-        try { const z = await (await fetch(`routes?lat=${H.lat0}&lon=${H.lon0}`, { cache: "no-store" })).json(); if (z.etat === "ok") return z; } catch (e) { /* on réessaie */ }
-        await new Promise((r) => setTimeout(r, i < 3 ? 2000 : 5000)); } return null; })();
-      const [tex, texD] = await Promise.all([buildTexture(opts.tileImg, MAP_Z, 4096, EXT), buildTexture(opts.tileImg, DET_Z, 4096, DET_E)]);
-      const zone = await Promise.race([zoneP, new Promise((r) => setTimeout(() => r(null), 4000))]);
+      const routesP = poll("routes", 5000);
+      // carte rapide d'abord (z12, ~40 morceaux) : la table s'affiche vite ; la carte fine arrive ensuite
+      step("CARTE");
+      const tex = await buildTexture(opts.tileImg, 12, 2048, EXT);
+      if (!live()) return false;
+      const zone = await Promise.race([zoneP, new Promise((r) => setTimeout(() => r(null), 2500))]);
+      step("CONSTRUCTION");
       await new Promise((r) => setTimeout(r, 0));
-      buildScene(tex, zone, texD);
-      routesP.then((r) => whenIdle(() => { if (r && r.routes) { buildRoads(r.routes); if (H.active && H.mode === "atlas") say(`Réseau routier chargé : ${H.roadKm.toFixed(0)} km de routes et sentiers.`, "s"); } }));
+      buildScene(tex, zone, null);
+      Promise.all([buildTexture(opts.tileImg, MAP_Z, 4096, EXT), buildTexture(opts.tileImg, DET_Z, 4096, DET_E)]).then(([t13, t15]) => whenIdle(() => {
+        if (!live() || !H.U) return;
+        for (const t of [t13, t15]) { t.anisotropy = 16; t.minFilter = THREE.LinearMipmapLinearFilter; if (H.renderer.initTexture) H.renderer.initTexture(t); }
+        const old = H.U.uTex.value; H.U.uTex.value = t13; H.U.uTexD.value = t15; H.U.uDetOn.value = 1;
+        if (old && old !== t13) old.dispose();
+        H.hd = true; if (H.opts.report) H.opts.report("holo-table : carte haute définition en place");
+      }));
+      routesP.then((r) => whenIdle(() => { if (live() && r && r.routes) { buildRoads(r.routes); if (H.active && H.mode === "atlas") say(`Réseau routier chargé : ${H.roadKm.toFixed(0)} km de routes et sentiers.`, "s"); } }));
       H.zoneLate = zone ? null : zoneP;
-      if (H.zoneLate) H.zoneLate.then((z) => whenIdle(() => { if (z && !H.buildings) { buildBuildings(z); buildLines(z); buildDyn();
+      if (H.zoneLate) H.zoneLate.then((z) => whenIdle(() => { if (live() && z && !H.buildings) { buildBuildings(z); buildLines(z); buildDyn();
         H.say && H.say(`Données OpenStreetMap reçues : ${H.buildingCount} bâtiments en 3D, ${H.peaks.length} sommets.`, "s");
         if (H.onData) H.onData(); } }));
       H.ready = true; H.vision = 0; H.labelsOn = false; H.autoOrbit = true;
       setSunNow(); applyWeather(opts.meteo);
-      raf = requestAnimationFrame(frame);
+      cancelAnimationFrame(raf); raf = requestAnimationFrame(frame);
+      step("");
       return true;
-    } catch (e) { H.failed = true; if (opts.report) opts.report("holo-table indisponible : " + (e && e.message || e)); return false; }
+    } catch (e) { if (live()) { H.failed = true; if (opts.report) opts.report("holo-table indisponible : " + (e && e.message || e)); } return false; }
   })();
   return H.loading;
+};
+// Changer de lieu SANS recharger la page : on jette l'ancienne table et on reconstruit au nouvel endroit.
+H.relocate = async function (lat, lon, ville, home) {
+  cancelAnimationFrame(raf);
+  const wasActive = H.active; H.active = false;
+  try { if (H.composer) H.composer.dispose && H.composer.dispose(); H.renderer && H.renderer.dispose(); H.renderer && H.renderer.forceContextLoss(); } catch (e) { /* rien */ }
+  const old = H.opts.canvas, cv = old.cloneNode(false); old.replaceWith(cv);
+  H.opts.labels.innerHTML = "";
+  Object.assign(H, { ready: false, loading: null, failed: false, labels: [], peaks: [], rivers: [], lifts: [], buildingCount: 0,
+    buildings: null, roads: null, roadKm: 0, hd: false, dynPts: null, dyn: null, scene: null, composer: null, renderer: null, vsOn: false, U: null });
+  fly = null; scanT = -1; lockT = -1;
+  const ok = await H.init({ ...H.opts, lat, lon, ville, canvas: cv, home, meteo: home ? H.opts.meteo : null });
+  if (ok && H.bindControls) H.bindControls(cv);
+  if (ok && wasActive) H.open(true);
+  return ok;
 };
 function resize() {
   if (!H.renderer) return;

@@ -917,12 +917,13 @@ TOOLS = [{"functionDeclarations": [
     _fn("sphere", "Ton apparence : la SPHÈRE (orbe) de Jarvis. taille = taille normale ; taille_parole = taille "
         "quand tu parles (« réduis ton orbe quand tu me parles ») ; ecran = sur quel écran (principal, secondaire, "
         "gauche, droite, autre) ; position = où sur l'écran (haut gauche, haut milieu, haut droite, centre, bas "
-        "gauche, bas milieu, bas droite) ; fond_noir = opacité du fond noir (0 = aucun) ; "
+        "gauche, bas milieu, bas droite) ; fond_noir = opacité du fond noir (0 = aucun) ; devant = par-dessus les "
+        "fenêtres (pages internet, Discord…, jamais par-dessus un jeu) : valeur oui / non ; "
         "reinitialiser = réglages d'origine ; etat = réglages actuels. valeur : tres_petite, petite, moyenne, "
         "grande, tres_grande, plus_petite, plus_grande, ou un pourcentage (taille : % de la hauteur de l'écran, "
         "10 à 70 ; fond_noir : 0 à 100). Effet immédiat, gardé pour la suite.",
-        {"action": _p("action", enum=["taille", "taille_parole", "ecran", "position", "fond_noir", "reinitialiser",
-                                      "etat"]),
+        {"action": _p("action", enum=["taille", "taille_parole", "ecran", "position", "fond_noir", "devant",
+                                      "reinitialiser", "etat"]),
          "valeur": _p("tres_petite | petite | moyenne | grande | tres_grande | plus_petite | plus_grande | nombre")},
         ["action"]),
     _fn("attendre_fenetre", "Attend qu'une fenêtre apparaisse (appli qui se lance, jeu qui charge) avant d'agir "
@@ -1721,6 +1722,20 @@ def parse_orb_style(text: str) -> list[tuple[str, str]] | None:
     return None
 
 
+ORB_TOP_RE = re.compile(r"\b(?:mets? toi|met toi|passe|reste|repasse|affiche toi|place toi|positionne toi|va|vas|"
+                        r"mets? ton (?:orbe|orb|arbre|sphere)|mets? l (?:orbe|orb|arbre)|mets? la sphere)\b.{0,12}?"
+                        r"\b(par dessus|au dessus|devant|au premier plan|premier plan|derriere|en arriere plan|"
+                        r"arriere plan|en dessous)\b")
+
+
+def parse_orb_top(text: str) -> str | None:
+    """« mets-toi par-dessus Discord / la page / tout » -> oui ; « repasse derrière » -> non."""
+    m = ORB_TOP_RE.search(text)
+    if not m:
+        return None
+    return "non" if m.group(1) in ("derriere", "en arriere plan", "arriere plan", "en dessous") else "oui"
+
+
 def parse_orb_move(text: str) -> list[tuple[str, str]] | None:
     """« mets ton orbe en haut à gauche », « va sur mon écran secondaire », « déplace-toi en bas au milieu »."""
     if not (ORB_WORDS.search(text) or SELF_MOVE.match(text)):
@@ -1983,6 +1998,14 @@ class Brain:
                 elif act == "caisse":
                     self.voice.say(random.choice(["Ouverture de la caisse.", "Bonne chance, monsieur."]))
                 return True
+        top = parse_orb_top(text)
+        if top:                                            # « mets-toi par-dessus Discord » (jamais sur un jeu)
+            out = self.actions.do_sphere("devant", top)
+            log.info("Voie express (sphère, premier plan) : %s -> %s", heard, out)
+            self.voice.say(("Je reste par-dessus tes fenêtres, sauf quand tu joues." if top == "oui"
+                            else "Je repasse derrière tes fenêtres.") if not out.startswith("ÉCHEC")
+                           else "Je n'arrive pas à changer ma place.")
+            return True
         style_cmd = parse_orb_style(text)
         if style_cmd:
             outs = [self.actions.do_sphere(a, v) for a, v in style_cmd]

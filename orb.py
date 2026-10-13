@@ -190,6 +190,14 @@ class Presence:
                 if vert == "centre" and hor != "milieu":
                     vert = "centre"
                 st["place"] = "centre" if (vert == "centre" and hor == "milieu") else f"{vert}_{hor}"
+            elif action == "devant":                         # « mets-toi par-dessus Discord / la page » (sauf jeux)
+                v = _plain(valeur)
+                if any(w in v for w in ("non", "derriere", "arriere", "fond", "off", "false", "0")):
+                    st["devant"] = False
+                elif any(w in v for w in ("inverse", "change", "bascule")):
+                    st["devant"] = not st.get("devant", False)
+                else:
+                    st["devant"] = True
             elif action == "fond_noir":
                 v = _percent(valeur, st.get("fond_noir", 100))
                 if v is None:
@@ -207,7 +215,8 @@ class Presence:
                  f" de l'écran {st.get('ecran', 'principal')}")
         return (f"OK : sphère {round(t * 100)} % de l'écran"
                 + (f", {round(tp * 100)} % quand je parle" if tp else "")
-                + f", fond noir {st.get('fond_noir', 100)} %" + where)
+                + f", fond noir {st.get('fond_noir', 100)} %" + where
+                + (", par-dessus tes fenêtres (sauf en jeu)" if st.get("devant") else ""))
 
     def set_state(self, mode: str, status: str | None = None) -> None:
         with self.lock:
@@ -476,6 +485,25 @@ def create(presence: Presence | None = None) -> "Orb":
         except Exception as e:  # noqa: BLE001
             log.warning("Sphère par la carte graphique indisponible (%s) : je garde l'ancienne.", e, exc_info=True)
     return Orb(presence)
+
+
+def game_in_front() -> bool:
+    """Un jeu est la fenêtre active (on ne passe jamais par-dessus un jeu)."""
+    try:
+        import mode_jeu
+        if not mode_jeu.ACTIF.is_set():
+            return False
+        u = ctypes.windll.user32
+        h = u.GetForegroundWindow()
+        pid = wintypes.DWORD()
+        u.GetWindowThreadProcessId(h, ctypes.byref(pid))
+        try:
+            import psutil
+            return psutil.Process(pid.value).name().lower() in mode_jeu.games()
+        except Exception:  # noqa: BLE001
+            return True                                   # un jeu tourne et on ne sait pas : prudence
+    except Exception:  # noqa: BLE001
+        return False
 
 
 class Orb:
@@ -824,6 +852,21 @@ class Orb:
             user32.SystemParametersInfoW(0x0014, 0, path, 0x02)
             self.saved_wallpaper = None
 
+    def _update_top(self, now: float) -> None:
+        """Par-dessus tes fenêtres si tu l'as demandé à la voix, mais jamais par-dessus un jeu."""
+        if self.full or self.attached or now - getattr(self, "_top_t", 0.0) < 0.4:
+            return
+        self._top_t = now
+        want = self.presence.style.get("devant")
+        if want is None:
+            want = self.position == "devant"
+        if want and game_in_front():
+            want = False
+        if want != self.on_top:
+            self.on_top = want
+            self._zorder()
+            log.info("Sphère %s.", "par-dessus les fenêtres" if want else "derrière les fenêtres")
+
     def _zorder(self) -> None:
         """Mode fond : le noir tout au fond, la sphère juste au-dessus, tes fenêtres devant.
         Mode devant : le noir puis la sphère au-dessus de tout."""
@@ -833,8 +876,9 @@ class Orb:
             self.last_sink = time.monotonic()
             return
         if self.on_top:
-            if self.black_hwnd:
-                sw(self.black_hwnd, wintypes.HWND(-1), 0, 0, 0, 0, flags)
+            if self.black_hwnd:                          # demandé à la voix : le noir reste derrière tes pages
+                top_black = self.position == "devant" and self.presence.style.get("devant") is None
+                sw(self.black_hwnd, wintypes.HWND(-1 if top_black else 1), 0, 0, 0, 0, flags)
             sw(self.hwnd, wintypes.HWND(-1), 0, 0, 0, 0, flags)
         else:
             sw(self.hwnd, wintypes.HWND(1), 0, 0, 0, 0, flags)                  # HWND_BOTTOM
@@ -898,6 +942,7 @@ class Orb:
                     else:
                         self._push(Compositor.to_bgra(img, min(1.0, self.fade * 1.6)))
                     self._show(True)
+                    self._update_top(start)
                     if not self.on_top and start - self.last_sink > 1.0:
                         self._zorder()                       # reste derrière les fenêtres, même après un clic
                 except Exception:  # noqa: BLE001

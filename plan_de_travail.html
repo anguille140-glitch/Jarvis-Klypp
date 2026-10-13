@@ -332,6 +332,13 @@ button { font: inherit; color: inherit; }
 @keyframes atlScan { from { top: 0; opacity: 1; } to { top: 100%; opacity: 0; } }
 #atlAddrIn { all: unset; box-sizing: border-box; width: 100%; padding: 9px 10px; border: 1px solid rgba(98, 230, 255, .45); background: rgba(0, 10, 20, .7); color: #fff; font: 12px var(--f-data); caret-color: #ffb24a; }
 #atlAddrIn:focus { border-color: #ffb24a; }
+#atlBuild { position: absolute; inset: 0; z-index: 4; display: grid; place-content: center; justify-items: center; gap: 8px; background: radial-gradient(ellipse at 50% 50%, rgba(1, 10, 20, .55), rgba(1, 6, 12, .92)); color: #d6f5ff; font: 12px var(--f-data); letter-spacing: .3em; }
+#atlBuild[hidden] { display: none; }
+#atlBuild b { font: 600 15px var(--f-display); letter-spacing: .4em; color: #62e6ff; }
+#atlBuild span { font: 700 26px var(--f-display); letter-spacing: .3em; }
+#atlBuild i { font-style: normal; color: #ffb24a; }
+#atlBuild .ring { width: 90px; height: 90px; border-radius: 50%; border: 2px solid rgba(98, 230, 255, .15); border-top-color: #62e6ff; border-right-color: rgba(98, 230, 255, .5); animation: spin 1s linear infinite; margin-bottom: 10px; }
+@keyframes spin { to { transform: rotate(1turn); } }
 #atlAddrX { all: unset; cursor: pointer; margin-left: 10px; color: #62e6ff; padding: 0 4px; } #atlAddrX:hover { color: #fff; }
 #atlAddrMsg { margin: 2px 0 0; font-size: 10.5px; color: rgba(98, 230, 255, .65); }
 #atlAddrMsg.w { color: #ffb24a; } #atlAddrMsg.s { color: #6dffc4; }
@@ -487,6 +494,7 @@ button { font: inherit; color: inherit; }
     <button id="atlAddrBtn" title="Changer d'adresse ou explorer un autre lieu (A)">⌖ ADRESSE</button>
     <button id="atlClose" title="Retour au plan de travail (Échap)">✕ RETOUR</button>
   </header>
+  <div id="atlBuild" hidden><div class="ring"></div><b>RECONSTRUCTION DU SECTEUR</b><span id="atlBuildName"></span><i id="atlBuildStep">RELIEF RÉEL</i></div>
   <form class="atl-panel" id="atlAddr" hidden autocomplete="off">
     <h2>Lieu <span><span id="atlAddrNow">domicile</span> <button type="button" id="atlAddrX" title="Fermer (Échap)">✕</button></span></h2>
     <div class="atl-grp">
@@ -1181,7 +1189,7 @@ const GLYPHS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#/<>Δ";
 const FRAME_MS = 1000 / 120, clocks = { boot: 0, orb: 0 };
 const due = (k, now) => { if (now - clocks[k] < FRAME_MS - 2) return false; clocks[k] = now; return true; };
 const perfBoot = { n: 0, long: 0, worst: 0, last: 0 };
-let gateT0 = 0;
+let gateT0 = 0, gateReady = 0;
 function drawGate(now) {                                // pendant la préparation : petit anneau holographique
   const W = fc.width, H = fc.height, px = W / Math.max(1, fc.clientWidth), cx = W / 2, cy = H / 2, t = now / 1000;
   f.clearRect(0, 0, W, H); f.save(); f.lineWidth = 2 * px;
@@ -1195,7 +1203,8 @@ function drawBoot() {
   if (VUE && !bootDone && !bootStart) bootStart = now - T_END * 1000;   // exploration d'un lieu : pas de globe
   if (!bootStart) {                                     // on prépare tout AVANT l'animation (sinon elle saccade)
     gateT0 = gateT0 || now;
-    const ok = !LIVE || !window.HOLO || HOLO.failed || HOLO.ready || now - gateT0 > 9000 || (!S.lieu && now - gateT0 > 3000);
+    if (window.HOLO && HOLO.ready && !gateReady) gateReady = now;
+    const ok = !LIVE || !window.HOLO || HOLO.failed || (HOLO.ready && (HOLO.hd || now - gateReady > 2500)) || now - gateT0 > 9000 || (!S.lieu && now - gateT0 > 3000);
     if (!ok) { drawGate(now); requestAnimationFrame(drawBoot); return; }
     if (now - gateT0 > 200) report(`intro lancée après ${Math.round(now - gateT0)} ms de préparation`);
     bootStart = now; f.clearRect(0, 0, fc.width, fc.height);
@@ -1655,7 +1664,7 @@ const atlas = $("#atlas"), hw = $("#holoWrap");
 let holoOn = false, pendingAtlas = false, holoSeq = null, tgtN = 1;
 const holoReady = () => !!(window.HOLO && HOLO.ready);
 const QS = new URLSearchParams(location.search);
-const VUE = (() => { const v = (QS.get("vue") || "").split(","); return v.length >= 2 && isFinite(+v[0]) && isFinite(+v[1]) ? { lat: +v[0], lon: +v[1], ville: decodeURIComponent(v.slice(2).join(",") || "Lieu exploré") } : null; })();
+let VUE = (() => { const v = (QS.get("vue") || "").split(","); return v.length >= 2 && isFinite(+v[0]) && isFinite(+v[1]) ? { lat: +v[0], lon: +v[1], ville: decodeURIComponent(v.slice(2).join(",") || "Lieu exploré") } : null; })();
 if (QS.has("atlas")) pendingAtlas = true;                 // rechargée pour la holo-table : on y retourne directement
 function holoTileImg(z, x, y, o = {}) {
   return new Promise((ok) => { const im = new Image(); im.onload = () => { try { ok(holoTile(im, o.size || 256, o.dim || 0) || im); } catch (e) { ok(im); } }; im.onerror = () => ok(null); im.src = `tuile/${z}/${x}/${y}.png`; });
@@ -1760,19 +1769,33 @@ async function explorePlace(q) {
   addrMsg("Recherche du lieu…");
   let p = null; try { p = await geocode(q); } catch (e) { p = null; }
   if (!p) { addrMsg("Lieu introuvable. Essaie avec la ville ou le code postal.", "w"); return; }
-  addrMsg(`Cap sur ${p.ville || q}. Reconstruction du relief…`, "s"); report("holo-table : exploration de " + (p.ville || q));
-  location.href = location.pathname + "?vue=" + [p.lat.toFixed(5), p.lon.toFixed(5), encodeURIComponent(p.ville || q)].join(",") + "&atlas=1";
+  report("holo-table : exploration de " + (p.ville || q));
+  await relocate({ lat: p.lat, lon: p.lon, ville: p.ville || q }, false);
 }
 $("#atlAddr").addEventListener("submit", (e) => { e.preventDefault(); const v = $("#atlAddrIn").value.trim(); if (v) explorePlace(v); });
-$("#atlAddrHome").addEventListener("click", () => {
+$("#atlAddrHome").addEventListener("click", async () => {
   const v = $("#atlAddrIn").value.trim(); if (!v) { addrMsg("Écris d'abord ton adresse.", "w"); return; }
   if (!LIVE) { addrMsg("Aperçu : sur ton PC, Jarvis enregistrerait cette adresse.", "w"); return; }
-  addrMsg("J'enregistre ton adresse et je recentre tout…", "s");
-  history.replaceState(null, "", location.pathname + "?atlas=1");     // après le rechargement : retour direct ici
-  if (VUE) { send({ type: "adresse", texte: v }).then(() => setTimeout(() => { location.href = location.pathname + "?atlas=1"; }, 2500)); }
-  else send({ type: "adresse", texte: v });
+  addrMsg("Recherche de l'adresse…");
+  let p = null; try { p = await geocode(v); } catch (e) { p = null; }
+  if (!p) { addrMsg("Adresse introuvable. Essaie avec le code postal et la ville.", "w"); return; }
+  send({ type: "adresse", texte: v, rejouer: false });  // enregistrée sur ton PC, sans relancer le plan de travail
+  await relocate({ lat: p.lat, lon: p.lon, ville: p.ville || v }, true);
 });
-$("#atlAddrBack").addEventListener("click", () => { location.href = location.pathname + "?atlas=1"; });
+$("#atlAddrBack").addEventListener("click", () => { const L = S.lieu || {}; if (L.lat) relocate({ lat: +L.lat, lon: +L.lon, ville: L.ville || "Domicile" }, true); });
+/* changement de lieu dans la holo-table, sans quitter la table */
+let relocating = false;
+async function relocate(p, home) {
+  if (relocating || !window.HOLO) return; relocating = true;
+  toggleAddr(false); VUE = home ? null : p;
+  const box = $("#atlBuild"); $("#atlBuildName").textContent = (p.ville || "").toUpperCase(); box.hidden = false;
+  HOLO.onStep = (st) => { $("#atlBuildStep").textContent = { RELIEF: "RELIEF RÉEL", CARTE: "CARTE HOLOGRAPHIQUE", CONSTRUCTION: "CONSTRUCTION 3D" }[st] || st; };
+  $("#atlLog").innerHTML = ""; $("#atlRight").hidden = true; $("#atlVS").classList.remove("on");
+  const t0 = performance.now(), ok = await HOLO.relocate(p.lat, p.lon, p.ville, home);
+  box.hidden = true; relocating = false; syncStats(); syncSun();
+  if (ok) { atlasSay(`${home ? "Domicile" : "Secteur"} ${p.ville} reconstruit en ${((performance.now() - t0) / 1000).toFixed(1)} s. Carte fine et bâtiments en approche.`, "s"); report(`holo-table : ${p.ville} en ${Math.round(performance.now() - t0)} ms`); }
+  else atlasSay("Impossible de reconstruire ce lieu (internet ?).", "w");
+}
 document.querySelectorAll("#atlLeft [data-v]").forEach((b) => b.addEventListener("click", () => {
   HOLO.setVision(+b.dataset.v); document.querySelectorAll("#atlLeft [data-v]").forEach((x) => x.classList.toggle("on", x === b)); }));
 $("#atlDrones").addEventListener("click", (e) => e.currentTarget.classList.toggle("on", HOLO.toggleDrones()));

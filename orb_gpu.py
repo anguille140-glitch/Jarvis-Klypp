@@ -448,6 +448,7 @@ class GpuOrb(O.Orb):
                     if not self.vsync:
                         self.dwm_flush()                 # attend l'affichage suivant de Windows
                     self._show(True)
+                    self._update_top(start)
                     if not self.on_top and start - self.last_sink > 1.0:
                         self._zorder()
                 except Exception:  # noqa: BLE001

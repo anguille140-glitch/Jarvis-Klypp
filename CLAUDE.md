@@ -59,6 +59,13 @@ et donne les actions à faire (fichiers à lancer) clairement.
   que si elle a moins de 25 s (`h.t`), sinon le plan de travail ouvrait aussi la table. Rideau de lumière retiré,
   bloom adouci. Overpass : serveurs de secours + une requête à la fois (`_overpass`) ; la page réessaie ~20 min.
   Boutons de l'en-tête avec `all: unset` → remettre `pointer-events: auto` (sinon non cliquables).
+  Changer de lieu SANS recharger : `HOLO.relocate(lat, lon, ville, home)` (nouveau canvas, `H.gen` annule les anciens
+  chargements) + encart « RECONSTRUCTION DU SECTEUR » ; « Définir comme domicile » envoie `adresse` avec
+  `rejouer:false` (pas de retour au cockpit). Chargement en 2 temps : carte rapide z12 2048 d'abord, puis z13 + z15
+  échangées hors animation (`H.hd`) ; la porte de l'intro attend `H.hd` 2,5 s max.
+- Sphère « par-dessus » à la voix : `parse_orb_top` / outil `sphere` action `devant` (oui/non), style `devant` ;
+  `Orb._update_top` (toutes les 0,4 s) la met au premier plan sauf si un jeu est la fenêtre active
+  (`game_in_front`, liste de `mode_jeu`) ; le fond noir reste alors derrière les fenêtres.
 - `vitrine_cs.py` + `vitrine_cs.html` + `skins_cs.json` — VITRINE CS2 (« lance mon fond d'écran ») : intro ouverture de
   caisse, skins chers qui défilent (inspection 3D souris, zoom, caisses, favoris, tirs dans le décor, bruitages WebAudio),
   pilotable à la voix (outil `fond_ecran`, `VITRINE_RE` / `VITRINE_CMDS`, `find_skin`). Images Steam téléchargées une
