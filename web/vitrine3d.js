@@ -38,7 +38,7 @@
     return s;
   }
 
-  V.init = function (canvas, bgCanvas) {
+  V.init = async function (canvas, bgCanvas) {
     const THREE = T();
     if (!THREE) throw new Error("three.js absent");
     R = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
@@ -51,7 +51,7 @@
     cam = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, .1, 140);
     const pm = new THREE.PMREMGenerator(R);
     // décor du village de nuit (web/vitrine_decor.js) s'il est là, sinon le studio sombre d'origine
-    try { decor = window.VitrineDecor ? window.VitrineDecor.build({ THREE, scene, R, FLOOR }) : null; } catch (e) { console.error(e); decor = null; scene.fog = null; }
+    try { decor = window.VitrineDecor ? await window.VitrineDecor.build({ THREE, scene, R, FLOOR }) : null; } catch (e) { console.error(e); decor = null; scene.fog = null; }
     if (decor) {
       SKIN_Y = .5; CAM_Y = .62; LOOK_Y = .32; V.on = decor.on;
       R.toneMappingExposure = .82;
@@ -81,6 +81,9 @@
     holder = new THREE.Group(); scene.add(holder);
     if (!decor) studio(THREE);
     composerSetup(THREE);
+    // shaders compilés maintenant (pendant la caisse) plutôt qu'à la première image : pas d'à-coup à l'arrivée
+    await new Promise((r) => setTimeout(r, 0));
+    try { R.compile(scene, cam); } catch (e) {}
     V.ready = true;
     requestAnimationFrame(frame);
   };
@@ -133,134 +136,102 @@
     });
   }
 
-  /* ---------- l'image officielle devient un objet épais ---------- */
-  function boxBlur(src, w, h, r) {
-    const tmp = new Float32Array(w * h), out = new Float32Array(w * h), k = 2 * r + 1;
-    for (let y = 0; y < h; y++) { let s = 0; for (let x = -r; x <= r; x++) s += src[y * w + clamp(x, 0, w - 1)];
-      for (let x = 0; x < w; x++) { tmp[y * w + x] = s / k; s += src[y * w + clamp(x + r + 1, 0, w - 1)] - src[y * w + clamp(x - r, 0, w - 1)]; } }
-    for (let x = 0; x < w; x++) { let s = 0; for (let y = -r; y <= r; y++) s += tmp[clamp(y, 0, h - 1) * w + x];
-      for (let y = 0; y < h; y++) { out[y * w + x] = s / k; s += tmp[clamp(y + r + 1, 0, h - 1) * w + x] - tmp[clamp(y - r, 0, h - 1) * w + x]; } }
-    return out;
-  }
-  // distance de chaque pixel au bord de la silhouette (chanfrein 3-4, deux passes)
-  function distField(alpha, w, h) {
-    const d = new Float32Array(w * h), INF = 1e6;
-    for (let i = 0; i < w * h; i++) d[i] = alpha[i] > .5 ? INF : 0;
-    const at = (x, y) => (x < 0 || y < 0 || x >= w || y >= h) ? 0 : d[y * w + x];
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; if (!d[i]) continue;
-      d[i] = Math.min(d[i], at(x - 1, y) + 1, at(x, y - 1) + 1, at(x - 1, y - 1) + 1.414, at(x + 1, y - 1) + 1.414); }
-    for (let y = h - 1; y >= 0; y--) for (let x = w - 1; x >= 0; x--) { const i = y * w + x; if (!d[i]) continue;
-      d[i] = Math.min(d[i], at(x + 1, y) + 1, at(x, y + 1) + 1, at(x + 1, y + 1) + 1.414, at(x - 1, y + 1) + 1.414); }
-    return d;
-  }
-  // image plus nette (masque flou inversé) : les détails de la peinture ressortent
-  function sharpen(cv, amount) {
-    const W = cv.width, H = cv.height, x = cv.getContext("2d", { willReadFrequently: true }), src = x.getImageData(0, 0, W, H);
-    const [b, bx] = (() => { const c = document.createElement("canvas"); c.width = W; c.height = H; return [c, c.getContext("2d", { willReadFrequently: true })]; })();
-    bx.filter = "blur(1.2px)"; bx.drawImage(cv, 0, 0);
-    const bl = bx.getImageData(0, 0, W, H).data, d = src.data;
-    for (let i = 0; i < d.length; i += 4) for (let c = 0; c < 3; c++) d[i + c] = clamp(d[i + c] + (d[i + c] - bl[i + c]) * amount, 0, 255);
-    x.putImageData(src, 0, 0);
-  }
-  function analyse(img, cat) {
+  /* ---------- HOLOGRAMME VOLUMÉTRIQUE ----------
+     On n'a pas les modèles 3D de Valve : extruder l'image donnait des tranches étirées et moches de profil.
+     À la place : l'image officielle (rendu 3D du vrai skin par Steam), nette et fidèle, projetée en hologramme :
+     contour lumineux à la couleur de la rareté, reflet qui glisse quand il tourne, et une « profondeur de lumière »
+     (couches translucides derrière) qui donne du volume quand on le fait pivoter. */
+  function analyse(img) {
     const W0 = img.naturalWidth, H0 = img.naturalHeight;
     const c = document.createElement("canvas"); c.width = W0; c.height = H0;
     const x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(img, 0, 0);
     const d = x.getImageData(0, 0, W0, H0).data;
     let x0 = W0, y0 = H0, x1 = 0, y1 = 0;
-    for (let y = 0; y < H0; y++) for (let xx = 0; xx < W0; xx++) if (d[(y * W0 + xx) * 4 + 3] > 24) { if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    for (let y = 0; y < H0; y += 2) for (let xx = 0; xx < W0; xx += 2) if (d[(y * W0 + xx) * 4 + 3] > 24) { if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (y < y0) y0 = y; if (y > y1) y1 = y; }
     if (x1 <= x0) { x0 = 0; y0 = 0; x1 = W0 - 1; y1 = H0 - 1; }
-    const pad = Math.round(Math.max(W0, H0) * .02);
+    const pad = Math.round(Math.max(W0, H0) * .03);
     x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad); x1 = Math.min(W0 - 1, x1 + pad); y1 = Math.min(H0 - 1, y1 + pad);
     const cw = x1 - x0 + 1, ch = y1 - y0 + 1;
-    // peinture recadrée (agrandie proprement si l'image est petite : meilleures mipmaps)
-    const up = cw < 900 ? 2 : 1, tex = document.createElement("canvas"); tex.width = cw * up; tex.height = ch * up;
-    const tx = tex.getContext("2d", { willReadFrequently: true }); tx.imageSmoothingQuality = "high"; tx.drawImage(c, x0, y0, cw, ch, 0, 0, tex.width, tex.height);
-    try { sharpen(tex, .35); } catch (e) {}
-    // carte de hauteur (silhouette arrondie) et carte de détails (relief de la peinture), en basse définition
-    const aw = Math.min(400, cw), ah = Math.max(8, Math.round(ch * aw / cw));
-    const a = document.createElement("canvas"); a.width = aw; a.height = ah;
-    const ax = a.getContext("2d", { willReadFrequently: true }); ax.imageSmoothingQuality = "high"; ax.drawImage(c, x0, y0, cw, ch, 0, 0, aw, ah);
-    const ad = ax.getImageData(0, 0, aw, ah).data, alpha = new Float32Array(aw * ah), lum = new Float32Array(aw * ah);
-    for (let i = 0; i < aw * ah; i++) { alpha[i] = ad[i * 4 + 3] / 255; lum[i] = (ad[i * 4] * .3 + ad[i * 4 + 1] * .59 + ad[i * 4 + 2] * .11) / 255 * alpha[i]; }
-    // profil d'épaisseur selon la distance au bord :
-    //  couteaux : en biseau jusqu'au fil (tranchant fin, dos plus épais) ; gants : rembourrés ; armes : flancs plats, arêtes vives
-    const dist = distField(alpha, aw, ah), height = new Float32Array(aw * ah);
-    const D = cat === "couteau" ? aw * .035 : cat === "gants" ? aw * .09 : aw * .008;    // armes à feu : flancs plats, arête fine
-    for (let i = 0; i < aw * ah; i++) {
-      const q = clamp(dist[i] / D, 0, 1);
-      height[i] = cat === "couteau" ? q : cat === "gants" ? Math.sqrt(q) : q * q * (3 - 2 * q);
-    }
-    { const hb = boxBlur(height, aw, ah, 1); for (let i = 0; i < aw * ah; i++) height[i] = alpha[i] > .5 ? hb[i] : 0; }
-    // relief fin : la peinture « en creux / en bosse » (passe-haut de la luminosité)
-    const lb = boxBlur(lum, aw, ah, 2), detail = new Float32Array(aw * ah);
-    for (let i = 0; i < aw * ah; i++) detail[i] = (lum[i] - lb[i]) * alpha[i];
-    const n = document.createElement("canvas"); n.width = aw; n.height = ah; const nx = n.getContext("2d"), nd = nx.createImageData(aw, ah);
-    for (let y = 0; y < ah; y++) for (let xx = 0; xx < aw; xx++) {
-      const i = y * aw + xx, dx = (detail[y * aw + clamp(xx + 1, 0, aw - 1)] - detail[y * aw + clamp(xx - 1, 0, aw - 1)]) * 2.2,
-        dy = (detail[clamp(y + 1, 0, ah - 1) * aw + xx] - detail[clamp(y - 1, 0, ah - 1) * aw + xx]) * 2.2, l = Math.hypot(dx, dy, 1);
-      nd.data[i * 4] = (-dx / l * .5 + .5) * 255; nd.data[i * 4 + 1] = (dy / l * .5 + .5) * 255; nd.data[i * 4 + 2] = (1 / l * .5 + .5) * 255; nd.data[i * 4 + 3] = 255;
-    }
-    nx.putImageData(nd, 0, 0);
-    // quelques points bien opaques pour les éclats lumineux
+    const tex = document.createElement("canvas"); tex.width = cw; tex.height = ch;
+    tex.getContext("2d").drawImage(c, x0, y0, cw, ch, 0, 0, cw, ch);
+    // masque basse définition pour savoir si la souris touche le skin
+    const aw = Math.min(256, cw), ah = Math.max(8, Math.round(ch * aw / cw));
+    const a = document.createElement("canvas"); a.width = aw; a.height = ah; const ax = a.getContext("2d", { willReadFrequently: true });
+    ax.drawImage(tex, 0, 0, aw, ah); const ad = ax.getImageData(0, 0, aw, ah).data, alpha = new Float32Array(aw * ah);
+    for (let i = 0; i < aw * ah; i++) alpha[i] = ad[i * 4 + 3] / 255;
     const spots = [];
-    for (let k = 0; k < 400 && spots.length < 8; k++) { const i = Math.random() * aw * ah | 0; if (height[i] > .55 && lum[i] > .45) spots.push([(i % aw) / aw, (i / aw | 0) / ah]); }
-    return { tex, normal: n, aspect: cw / ch, aw, ah, height, alpha, spots };
+    for (let k = 0; k < 600 && spots.length < 8; k++) { const i = Math.random() * aw * ah | 0; if (alpha[i] > .9) spots.push([(i % aw) / aw, (i / aw | 0) / ah]); }
+    return { tex, aspect: cw / ch, aw, ah, alpha, spots, px: new (T().Vector2)(1 / cw, 1 / ch) };
   }
   function sample(arr, aw, ah, u, v) {
     const x = clamp(u * (aw - 1), 0, aw - 1), y = clamp(v * (ah - 1), 0, ah - 1), x0 = x | 0, y0 = y | 0, x1 = Math.min(aw - 1, x0 + 1), y1 = Math.min(ah - 1, y0 + 1), fx = x - x0, fy = y - y0;
     return (arr[y0 * aw + x0] * (1 - fx) + arr[y0 * aw + x1] * fx) * (1 - fy) + (arr[y1 * aw + x0] * (1 - fx) + arr[y1 * aw + x1] * fx) * fy;
   }
-  function geometry(an, width, thick, back, edge) {
-    const THREE = T(), h = width / an.aspect, sx = 300, sy = Math.max(12, Math.round(sx / an.aspect));
-    const g = new THREE.PlaneGeometry(width, h, sx, sy), p = g.attributes.position, uv = g.attributes.uv;
-    const col = new Float32Array(p.count * 3);
-    for (let i = 0; i < p.count; i++) {
-      const hh = sample(an.height, an.aw, an.ah, uv.getX(i), 1 - uv.getY(i)), z = thick * hh; p.setZ(i, back ? -z : z);
-      // tranche de l'objet : métal sombre (et pas l'image étirée) -> de profil on voit un vrai bloc
-      const k = clamp(hh / edge, 0, 1), m = k * k * (3 - 2 * k);
-      col[i * 3] = .2 + .8 * m; col[i * 3 + 1] = .21 + .79 * m; col[i * 3 + 2] = .24 + .76 * m;
-    }
-    g.setAttribute("color", new THREE.BufferAttribute(col, 3));
-    if (back) { const ix = g.index.array; for (let k = 0; k < ix.length; k += 3) { const t = ix[k + 1]; ix[k + 1] = ix[k + 2]; ix[k + 2] = t; } }
-    g.computeVertexNormals();
-    return g;
-  }
-  const LOOK = {                       // matière selon le type d'arme
-    // peinture satinée fidèle à l'image officielle ; un léger vernis donne les reflets sans noyer les couleurs
-    couteau: { metalness: .2, roughness: .3, clearcoat: .55, clearcoatRoughness: .1, thick: .036, nscale: .8, env: .9, edge: .12 },
-    gants: { metalness: 0, roughness: .62, clearcoat: .1, clearcoatRoughness: .5, thick: .1, nscale: 1, env: .6, edge: .25 },
-    sniper: { metalness: .06, roughness: .42, clearcoat: .4, clearcoatRoughness: .18, thick: .075, nscale: 0, env: .65, edge: .92 },
-    fusil: { metalness: .06, roughness: .42, clearcoat: .4, clearcoatRoughness: .18, thick: .08, nscale: 0, env: .65, edge: .92 },
-    pistolet: { metalness: .08, roughness: .4, clearcoat: .4, clearcoatRoughness: .18, thick: .09, nscale: 0, env: .65, edge: .92 },
-  };
+  const HOLO_VS = `varying vec2 vUv; varying vec3 vN; varying vec3 vV;
+    void main(){ vUv = uv; vec4 w = modelMatrix * vec4(position, 1.); vN = normalize(mat3(modelMatrix) * normal); vV = normalize(cameraPosition - w.xyz);
+      gl_Position = projectionMatrix * viewMatrix * w; }`;
+  // la peinture : couleurs fidèles, contour lumineux, reflet qui balaie, fines lignes d'hologramme
+  const FACE_FS = `uniform sampler2D uMap; uniform vec3 uRar; uniform float uTime, uSweep, uFade, uBack; uniform vec2 uPx;
+    varying vec2 vUv; varying vec3 vN; varying vec3 vV;
+    void main(){
+      vec4 c = texture2D(uMap, vUv); float a = c.a;
+      float m = min(min(texture2D(uMap, vUv + vec2(uPx.x * 3., 0.)).a, texture2D(uMap, vUv - vec2(uPx.x * 3., 0.)).a),
+                    min(texture2D(uMap, vUv + vec2(0., uPx.y * 3.)).a, texture2D(uMap, vUv - vec2(0., uPx.y * 3.)).a));
+      float edge = clamp(a - m, 0., 1.);
+      if (a < .04 && edge < .02) discard;
+      vec3 col = pow(c.rgb, vec3(2.2)) * .92;                        // l'image Steam telle quelle (linéaire)
+      float facing = abs(dot(normalize(vN), normalize(vV)));
+      float band = exp(-pow((vUv.x + vUv.y * .35 - uSweep) * 5., 2.));  // reflet qui glisse quand il tourne
+      col += vec3(1.) * band * .16 * a;
+      col += uRar * edge * 1.6;                                      // contour lumineux (couleur de la rareté)
+      col += uRar * pow(1. - facing, 2.) * .35 * a;                  // vu de biais : il s'allume comme un hologramme
+      float scan = .965 + .035 * sin(vUv.y * 900. + uTime * 6.);
+      col *= scan;
+      col = mix(col, col * .45 + uRar * .12, uBack);                 // de dos : image fantôme, plus sombre
+      gl_FragColor = vec4(col * uFade, max(a, edge) * uFade);
+    }`;
+  // couches de lumière derrière la peinture : le « volume » de l'hologramme
+  const SLICE_FS = `uniform sampler2D uMap; uniform vec3 uRar; uniform float uK, uFade, uTime; varying vec2 vUv; varying vec3 vN; varying vec3 vV;
+    void main(){ float a = texture2D(uMap, vUv).a; if (a < .3) discard;
+      float facing = abs(dot(normalize(vN), normalize(vV)));
+      float side = .25 + .75 * pow(1. - facing, 1.5);               // presque invisibles de face, lumineuses de profil
+      float flick = .85 + .15 * sin(uTime * 3. + uK * 20.);
+      gl_FragColor = vec4(uRar * (1. - uK) * .22 * side * flick * uFade, 1.); }`;
+  const NSL = 12;
   function build(an, skin) {
-    const THREE = T(), look = LOOK[skin.categorie] || LOOK.fusil;
-    const width = Math.min(2.75, 1.6 * an.aspect), maxA = R.capabilities.getMaxAnisotropy();
-    const map = new THREE.CanvasTexture(an.tex); map.encoding = THREE.sRGBEncoding; map.anisotropy = maxA;
-    const nmap = new THREE.CanvasTexture(an.normal); nmap.anisotropy = maxA;
-    const mk = (back) => new THREE.MeshPhysicalMaterial({ map, normalMap: look.nscale ? nmap : null, normalScale: new THREE.Vector2((back ? -1 : 1) * look.nscale, look.nscale), alphaTest: .5,
-      metalness: look.metalness, roughness: look.roughness, clearcoat: look.clearcoat, clearcoatRoughness: look.clearcoatRoughness, envMapIntensity: look.env, vertexColors: true });
-    const front = new THREE.Mesh(geometry(an, width, look.thick, false, look.edge), mk(false));
-    const back = new THREE.Mesh(geometry(an, width, look.thick, true, look.edge), mk(true));
-    const g = new THREE.Group(); g.add(front, back);
-    // reflet dans le sol : même objet, retourné sous le sol
-    const mirror = new THREE.Group(); mirror.add(new THREE.Mesh(front.geometry, front.material), new THREE.Mesh(back.geometry, back.material));
-    mirror.matrixAutoUpdate = false;
-    // éclats lumineux qui scintillent sur les objets ★
+    const THREE = T(), width = Math.min(2.9, 1.75 * an.aspect), h = width / an.aspect;
+    const map = new THREE.CanvasTexture(an.tex); map.anisotropy = R.capabilities.getMaxAnisotropy();
+    map.minFilter = THREE.LinearMipmapLinearFilter;
+    const rar = new THREE.Color(skin.couleur || "#4b69ff");
+    const geo = new THREE.PlaneGeometry(width, h);
+    const U = { uMap: { value: map }, uRar: { value: rar }, uTime: { value: 0 }, uSweep: { value: 0 }, uFade: { value: 1 }, uBack: { value: 0 }, uPx: { value: an.px } };
+    const mkFace = (back) => new THREE.ShaderMaterial({ uniforms: { ...U, uBack: { value: back ? 1 : 0 } }, vertexShader: HOLO_VS, fragmentShader: FACE_FS,
+      transparent: true, depthWrite: !back, side: back ? THREE.BackSide : THREE.FrontSide, toneMapped: false });
+    const front = new THREE.Mesh(geo, mkFace(false)), back = new THREE.Mesh(geo, mkFace(true));
+    front.renderOrder = 3; back.renderOrder = 2;
+    const g = new THREE.Group(); g.add(back, front);
+    const slices = [];
+    const depth = skin.categorie === "gants" ? .26 : skin.categorie === "couteau" ? .12 : .18;
+    for (let k = 1; k <= NSL; k++) {
+      const m = new THREE.Mesh(geo, new THREE.ShaderMaterial({ uniforms: { uMap: { value: map }, uRar: { value: rar }, uK: { value: k / NSL }, uFade: U.uFade, uTime: U.uTime },
+        vertexShader: HOLO_VS, fragmentShader: SLICE_FS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+      m.position.z = -depth * k / NSL; m.renderOrder = 1; g.add(m); slices.push(m);
+    }
+    const mirror = new THREE.Group(); mirror.add(new THREE.Mesh(geo, front.material)); mirror.matrixAutoUpdate = false;
     const flares = [];
     if (skin.nom.startsWith("★") || skin.rarete === "Contrebande") {
       const ftex = gradTex([[0, "rgba(255,255,255,1)"], [.12, "rgba(255,240,200,.8)"], [.4, "rgba(255,220,150,.08)"], [1, "rgba(0,0,0,0)"]], 128, 128);
       for (const [u, v] of an.spots) {
-        const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: ftex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }));
-        s.position.set((u - .5) * width, (.5 - v) * width / an.aspect, look.thick + .02); s.userData.ph = Math.random() * 6; g.add(s); flares.push(s);
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: ftex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }));
+        sp.position.set((u - .5) * width, (.5 - v) * h, .02); sp.userData.ph = Math.random() * 6; g.add(sp); flares.push(sp);
       }
     }
-    return { g, mirror, front, back, an, width, flares, maps: [map, nmap] };
+    return { g, mirror, front, back, slices, an, width, flares, U, maps: [map], geo };
   }
   function dispose(it) {
     holder.remove(it.g); holder.remove(it.mirror);
-    for (const m of [it.front, it.back]) { m.geometry.dispose(); m.material.dispose(); }
+    it.geo.dispose(); it.front.material.dispose(); it.back.material.dispose();
+    for (const m of it.slices) m.material.dispose();
     for (const t of it.maps) t.dispose();
     for (const f of it.flares) f.material.dispose();
   }
@@ -268,10 +239,12 @@
   function loadImage(url) {
     return new Promise((res, rej) => { const im = new Image(); im.decoding = "async"; im.onload = () => res(im); im.onerror = rej; im.src = url; });
   }
+  let showSeq = 0;
   V.show = async function (skin, url, dir = 1) {
-    let im;
+    let im; const seq = ++showSeq;
     try { im = await loadImage(url); } catch (e) { return false; }
-    const an = analyse(im, skin.categorie), it = build(an, skin);
+    if (seq !== showSeq) return false;                // un autre skin a été demandé entre-temps : on ne l'affiche pas en retard
+    const an = analyse(im), it = build(an, skin);
     it.t0 = performance.now(); it.dir = dir; it.state = "enter";
     for (const o of items) if (o.state !== "leave") { o.state = "leave"; o.tl = performance.now(); }
     it.mirror.visible = !decor;
@@ -298,7 +271,7 @@
   V.hit = function (cx, cy) {
     const THREE = T(), it = items.find((o) => o.state !== "leave"); if (!it) return false;
     const rc = new THREE.Raycaster(); rc.setFromCamera(new THREE.Vector2(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1), cam);
-    const hits = rc.intersectObjects([it.front, it.back]);
+    const hits = rc.intersectObjects([it.front]);
     return hits.some((h) => h.uv && sample(it.an.alpha, it.an.aw, it.an.ah, h.uv.x, 1 - h.uv.y) > .5);
   };
 
@@ -337,6 +310,8 @@
       g.updateMatrix();
       it.mirror.matrix.makeTranslation(0, 2 * FLOOR, 0).multiply(new THREE.Matrix4().makeScale(1, -1, 1)).multiply(g.matrix);
       it.mirror.matrixWorldNeedsUpdate = true;
+      it.U.uTime.value = t; it.U.uSweep.value = ((g.rotation.y % 6.283) + 6.283) % 6.283 / 6.283 * 3. - .9;   // reflet suit la rotation
+      it.U.uFade.value = it.state === "leave" ? 1 - clamp((now - it.tl) / 650, 0, 1) : clamp(tt / .5, 0, 1);
       for (const f of it.flares) {                   // scintillements
         const ph = (t * .7 + f.userData.ph) % 3.2, a = ph < .5 ? Math.sin(ph / .5 * Math.PI) : 0;
         f.material.opacity = a; f.scale.setScalar(.15 + .55 * a); f.material.rotation = t;

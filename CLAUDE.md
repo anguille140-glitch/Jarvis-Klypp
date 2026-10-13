@@ -81,7 +81,7 @@ et donne les actions à faire (fichiers à lancer) clairement.
 - `vitrine_cs.py` + `vitrine_cs.html` + `skins_cs.json` — VITRINE CS2 (« lance mon fond d'écran ») : intro ouverture de
   caisse, skins chers qui défilent (inspection 3D souris, zoom, caisses, favoris, tirs dans le décor, bruitages WebAudio),
   pilotable à la voix (outil `fond_ecran`, `VITRINE_RE` / `VITRINE_CMDS`, `find_skin`). Images Steam téléchargées une
-  fois dans `.cache/skins` (jamais dans le dépôt). Prix indicatifs SteamAnalyst (sept. 2026) pour 14 skins.
+  fois dans `.cache/skins` (jamais dans le dépôt). 93 skins ; prix indicatifs (SteamAnalyst sept. 2026 pour les anciens, fourchettes larges pour les ajouts).
   3D : `web/vitrine3d.js` (three.js local) transforme l'image en objet épais (bords arrondis, relief de peinture,
   laque/métal, sol réfléchissant, bloom) ; repli 2D automatique si WebGL échoue (ou `?2d`). Images Steam : essaie
   `/1024fx1024f` puis la taille par défaut.
@@ -93,8 +93,14 @@ et donne les actions à faire (fichiers à lancer) clairement.
   `SFX.flyby`), panneaux holo, flux de données (bloc EXTRAS, `extraUpd`). Sons : moteur SFX à attaques nettes + ambiance pluie ; visière avec gouttes (canvas).
   Épaisseur des skins = distance au bord (couteaux en biseau jusqu'au fil, armes à feu flancs plats). Rotation
   libre à la souris (avec inertie, Klypp la veut libre) ; bords assombris (couleurs par sommet) pour cacher le profil.
-  Intro : précharge toutes les images (compteur « n/54 », 25 s max), roulette avec images chargées seulement, 3D du
-  skin calculée seulement après la caisse. Peinture satinée (peu de métal) pour garder les couleurs. Scripts `web/` chargés avec `?v=VER`
+  Intro / caisse (refaite, futuriste) : l'écran de caisse s'affiche TOUT DE SUITE pendant que la 3D se construit
+  (`GL_READY = start3D()`, `VitrineDecor.build` et `Vitrine3D.init` sont async avec des pauses, `R.compile` en avance) :
+  cube de données CSS 3D + laser → surcharge → explosion (onde, flash, débris `CFX`) → carrousel holographique courbe
+  (`place(x)`, rayon 1050 px, faisceau laser) → la carte gagnante sort, se désintègre → matérialisation du skin
+  ligne par ligne (`#revImg` clip-path, aberration RGB, ondes, nom « déchiffré » `decode`). Images : compteur « n/93 »,
+  25 s max. `finish` attend `GL_READY` (4 s max). Skins = rendus officiels Steam en HOLOGRAMME volumétrique
+  (`analyse` + `build` dans `vitrine3d.js` : faces shader + 12 tranches additives) — pas de vrais modèles 3D (assets
+  Valve). `V.show` ignore une image arrivée en retard (`showSeq`). Peinture satinée (peu de métal) pour garder les couleurs. Scripts `web/` chargés avec `?v=VER`
   (constante dans `vitrine_cs.html`) : l'incrémenter à chaque modif de `web/` (sinon Chrome garde l'ancien fichier).
 - `session_jeu.py` — « lance-moi une session CS » : FACEIT AC (élévation UAC, ou tâche planifiée sans confirmation) puis
   CS2 via `steam://rungameid/730`, annonces vocales à chaque étape (outil `session_jeu` + voie express).

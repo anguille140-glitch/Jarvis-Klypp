@@ -1,5 +1,5 @@
 {
- "source_prix": "Prix indicatifs en dollars, SteamAnalyst, septembre 2026 (varient selon l'état et le motif).",
+ "source_prix": "Prix indicatifs en dollars (SteamAnalyst sept. 2026 pour les premiers, estimations larges pour les ajouts) : ils varient selon l'état et le motif.",
  "skins": [
   {
    "id": "awp-dragon-lore",
@@ -1026,6 +1026,747 @@
    ],
    "stattrak": false,
    "souvenir": false
+  },
+  {
+   "id": "karambit-crimson-web",
+   "nom": "★ Karambit | Crimson Web",
+   "arme": "Karambit",
+   "finition": "Crimson Web",
+   "categorie": "couteau",
+   "rarete": "★ Objet rare spécial",
+   "couleur": "#e4ae39",
+   "collection": "CS:GO Weapon Case",
+   "prix": "≈ 2 000 – 8 000 $",
+   "anecdote": "La toile rouge sur le karambit : en neuf, elle est presque introuvable.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyL6kJ_m-B1Q7uCvZaZkNM-bF1iHxOxlj-1gSCGn20wi4mTcyoyoeS_Dbwd2Cpd0RrMK4RbqxNTvZLyw7lff3Y5GxX6oiiNXrnE86bQY1_c",
+   "flottant": [
+    0.06,
+    0.8
+   ],
+   "stattrak": true,
+   "souvenir": false
+  },
+  {
+   "id": "butterfly-knife-crimson-web",
+   "nom": "★ Butterfly Knife | Crimson Web",
+   "arme": "Butterfly Knife",
+   "finition": "Crimson Web",
+   "categorie": "couteau",
+   "rarete": "★ Objet rare spécial",
+   "couleur": "#e4ae39",
+   "collection": "Operation Breakout Weapon Case",
+   "prix": "≈ 2 000 – 7 000 $",
+   "anecdote": "L'ouverture du papillon + la toile rouge : un duo culte des inventaires.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyL6kJ_m-B1Z-ua6bbZrLOmsBn6v1ut0o95lRi67gVN04WmDzNz_cX_CalAiW8FxR7MI4xKxmtPlYe7ksgzeiN5BziT83y4f8G81tOxPsLb-",
+   "flottant": [
+    0.06,
+    0.8
+   ],
+   "stattrak": true,
+   "souvenir": false
+  },
+  {
+   "id": "butterfly-knife-gamma-doppler",
+   "nom": "★ Butterfly Knife | Gamma Doppler",
+   "arme": "Butterfly Knife",
+   "finition": "Gamma Doppler",
+   "categorie": "couteau",
+   "rarete": "★ Objet rare spécial",
+   "couleur": "#e4ae39",
+   "collection": "Operation Riptide Case",
+   "prix": "≈ 1 800 – 6 000 $ (Émeraude bien plus)",
+   "anecdote": "La phase Émeraude, verte pure, est la plus recherchée.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyL6kJ_m-B1Z-ua6bbZrLOmsD2qvxu97veBWSyajhREioQKVko7qJH_4Ml93UtZuQrVe4EOxkNHvYryx5g2L39oXyS6q2ixM5i9s474GUast_6PU3AuXY6p9v8diATcRqA",
+   "flottant": [
+    0,
+    0.08
+   ],
+   "stattrak": true,
+   "souvenir": false
+  },
+  {
+   "id": "m9-bayonet-fade",
+   "nom": "★ M9 Bayonet | Fade",
+   "arme": "M9 Bayonet",
+   "finition": "Fade",
+   "categorie": "couteau",
+   "rarete": "★ Objet rare spécial",
+   "couleur": "#e4ae39",
+   "collection": "CS:GO Weapon Case",
+   "prix": "≈ 1 000 – 1 800 $",
+   "anecdote": "Dégradé rose-violet-jaune : plus il y a de rose, plus il vaut cher.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyL6kJ_m-B1Wts2sab1iLvWHMWaR_uh3tORWQyC0nQlp4znQytr6cnjFbg8oC8BzRrQK50S-lNDgP-_r5wWP3t5CyX37jCIb7DErvbiJu9Hv_g",
+   "flottant": [
+    0,
+    0.08
+   ],
+   "stattrak": true,
+   "souvenir": false
+  },
+  {
+   "id": "bayonet-doppler",
+   "nom": "★ Bayonet | Doppler",
+   "arme": "Bayonet",
+   "finition": "Doppler",
+   "categorie": "couteau",
+   "rarete": "★ Objet rare spécial",
+   "couleur": "#e4ae39",
+   "collection": "Chroma Case",
+   "prix": "≈ 500 – 3 000 $ (selon la phase)",
+   "anecdote": "Même famille que le karambit Doppler, en plus abordable.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLzn4_v8ydP0POjV7dsMOCbB3WV_uN3ouNlSiCpkBkYvzSCkpu3d3_FaFUnXpRwEO4O50G5xoW1Y7zn5wLe3oxBxHn6jiwf7XposO8LBb1lpPPeBvHrwA",
+   "flottant": [
+    0,
+    0.08
+   ],
+   "stattrak": true,
+   "souvenir": false
+  },
+  {
+   "id": "skeleton-knife-crimson-web",
+   "nom": "★ Skeleton Knife | Crimson Web",
+   "arme": "Skeleton Knife",
+   "finition": "Crimson Web",
+   "categorie": "couteau",
+   "rarete": "★ Objet rare spécial",
+   "couleur": "#e4ae39",
+   "collection": "Shattered Web Case",
+   "prix": "≈ 1 000 – 3 000 $",
+   "anecdote": "Lame ajourée et toile rouge : très prisé des collectionneurs.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyL6kJ_m-B1I5PeibbBiLs-bF1iHxOxlj-1gSCGn2011t26Bytr_cn-VZwciXJskRLQKuka9k4ezYrnqtQXf2YhGzC6viXxXrnE8k9yhp-k",
+   "flottant": [
+    0.06,
+    0.8
+   ],
+   "stattrak": true,
+   "souvenir": false
+  },
+  {
+   "id": "kukri-knife-fade",
+   "nom": "★ Kukri Knife | Fade",
+   "arme": "Kukri Knife",
+   "finition": "Fade",
+   "categorie": "couteau",
+   "rarete": "★ Objet rare spécial",
+   "couleur": "#e4ae39",
+   "collection": "Kilowatt Case",
+   "prix": "≈ 500 – 1 000 $",
+   "anecdote": "Le kukri est arrivé avec CS2 : grande lame courbée façon machette.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyL6kJ_m-B1Q-vm8YZtsIc-VD2OV_uJ_t-l9AXyyzEohsGvVn4moIi-VO1N2CJR1E-UD4BXtkIXhMe2x7lbej4tEnyzgznQeN9c5PgA",
+   "flottant": [
+    0,
+    0.08
+   ],
+   "stattrak": true,
+   "souvenir": false
+  },
+  {
+   "id": "ursus-knife-fade",
+   "nom": "★ Ursus Knife | Fade",
+   "arme": "Ursus Knife",
+   "finition": "Fade",
+   "categorie": "couteau",
+   "rarete": "★ Objet rare spécial",
+   "couleur": "#e4ae39",
+   "collection": "Horizon Case",
+   "prix": "≈ 300 – 600 $",
+   "anecdote": "Couteau de survie massif, le Fade lui donne un look néon.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyL6kJ_m-B1O_eG7e5tsIc-VD2OV_uJ_t-l9AXzml00i527XzouseH7GblAjX5N3R-NbuhLswYfjY-zj7laKjdkRyX_gznQeK-1-7hY",
+   "flottant": [
+    0,
+    0.08
+   ],
+   "stattrak": true,
+   "souvenir": false
+  },
+  {
+   "id": "nomad-knife-fade",
+   "nom": "★ Nomad Knife | Fade",
+   "arme": "Nomad Knife",
+   "finition": "Fade",
+   "categorie": "couteau",
+   "rarete": "★ Objet rare spécial",
+   "couleur": "#e4ae39",
+   "collection": "Shattered Web Case",
+   "prix": "≈ 400 – 800 $",
+   "anecdote": "Lame pliante discrète, dégradé coucher de soleil.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyL6kJ_m-B1U-uaqZ6t_H_GSMWGRxetJvOhuRz39wUUksW7Vm4n7d3yUO1InXsdxTeQDukO4l9zuN7_j5QzYjIlFy3n6jDQJsHjNMoy1vA",
+   "flottant": [
+    0,
+    0.08
+   ],
+   "stattrak": true,
+   "souvenir": false
+  },
+  {
+   "id": "karambit-autotronic",
+   "nom": "★ Karambit | Autotronic",
+   "arme": "Karambit",
+   "finition": "Autotronic",
+   "categorie": "couteau",
+   "rarete": "★ Objet rare spécial",
+   "couleur": "#e4ae39",
+   "collection": "Gamma Case",
+   "prix": "≈ 1 000 – 2 500 $",
+   "anecdote": "Rouge et noir mécanique : style robot, très futuriste.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyL6kJ_m-B1Q7uCvZaZkNM-UHVibwPx3vd5oWj28gQ8ovTSGpYPwJiPTcAMkCJt3QuVY4xXrloHhP-nlsw2Ljo1NzS6ohitJvCc4sOcHAqInqKfJz1aWliaAF_M",
+   "flottant": [
+    0,
+    0.85
+   ],
+   "stattrak": true,
+   "souvenir": false
+  },
+  {
+   "id": "sport-gloves-amphibious",
+   "nom": "★ Sport Gloves | Amphibious",
+   "arme": "Sport Gloves",
+   "finition": "Amphibious",
+   "categorie": "gants",
+   "rarete": "★ Objet rare spécial",
+   "couleur": "#e4ae39",
+   "collection": "Clutch Case",
+   "prix": "≈ 1 000 – 3 500 $",
+   "anecdote": "Bleu et gris façon combinaison de plongée.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Tk5UvzWCL2kpn2-DFk_OKherB0H-CcB3Sfz9Fwou5ucCu_gBgYpDWMjorGLSLANkI-W5R4E7JZtxbskNWxZeLi4QPejdgTmSn62iwbvyw957kDAqog_fXWjBaBb-Pahe96zA",
+   "flottant": [
+    0.06,
+    0.8
+   ],
+   "stattrak": false,
+   "souvenir": false
+  },
+  {
+   "id": "sport-gloves-slingshot",
+   "nom": "★ Sport Gloves | Slingshot",
+   "arme": "Sport Gloves",
+   "finition": "Slingshot",
+   "categorie": "gants",
+   "rarete": "★ Objet rare spécial",
+   "couleur": "#e4ae39",
+   "collection": "Operation Broken Fang Case",
+   "prix": "≈ 600 – 2 500 $",
+   "anecdote": "Rayures noires et rouges, look très « équipe de sport ».",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Tk5UvzWCL2kpn2-DFk_OKherB0H-OfB2mX0uZ5pN5lRi67gVN24DzSw479dnuTbAckWcElRbJctkW9ktPlNu2w51Dc2oNAmCWo2ioa8G81tMaI-Tzs",
+   "flottant": [
+    0.06,
+    0.8
+   ],
+   "stattrak": false,
+   "souvenir": false
+  },
+  {
+   "id": "sport-gloves-omega",
+   "nom": "★ Sport Gloves | Omega",
+   "arme": "Sport Gloves",
+   "finition": "Omega",
+   "categorie": "gants",
+   "rarete": "★ Objet rare spécial",
+   "couleur": "#e4ae39",
+   "collection": "Clutch Case",
+   "prix": "≈ 500 – 2 000 $",
+   "anecdote": "Motif géométrique bleu et vert, discret mais rare en neuf.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Tk5UvzWCL2kpn2-DFk_OKherB0H_KfD2Sb_vlzsuNgQS6MjBgrvzKSpYPwJiPTcFAkC5UiRrRZ5BO9ktDnM-q37wCMjN5GxCqvhngb6Chj6u0CVvAj-6fJz1aW3nluLgw",
+   "flottant": [
+    0.06,
+    0.8
+   ],
+   "stattrak": false,
+   "souvenir": false
+  },
+  {
+   "id": "specialist-gloves-emerald-web",
+   "nom": "★ Specialist Gloves | Emerald Web",
+   "arme": "Specialist Gloves",
+   "finition": "Emerald Web",
+   "categorie": "gants",
+   "rarete": "★ Objet rare spécial",
+   "couleur": "#e4ae39",
+   "collection": "Glove Case",
+   "prix": "≈ 600 – 3 000 $",
+   "anecdote": "La toile verte : rare en bon état, très demandée.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Tk71ruQBH4jYLf-i5U-fe9V7d9JfOaD2uZ0vpJtexsXSi_kSIwtj-6lob-KT-Jbw4kA8d4QOBb5hnqmoHuMLmx4AWK341Bnyr93CxN6itjsb1XUfAgqLqX0V92--w69A",
+   "flottant": [
+    0.06,
+    0.8
+   ],
+   "stattrak": false,
+   "souvenir": false
+  },
+  {
+   "id": "driver-gloves-crimson-weave",
+   "nom": "★ Driver Gloves | Crimson Weave",
+   "arme": "Driver Gloves",
+   "finition": "Crimson Weave",
+   "categorie": "gants",
+   "rarete": "★ Objet rare spécial",
+   "couleur": "#e4ae39",
+   "collection": "Glove Case",
+   "prix": "≈ 400 – 2 000 $",
+   "anecdote": "Cuir tressé rouge foncé, l'élégance des gants de pilote.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5T441rsfhr9kYDl7h1I4_utY5t_JfSsAm6Xyfo4trVoSnGxlh9x5DmEzt6rJS2RagYiA5siQ-MLthW9xtDlM7uxtFCNgpUFk3thcTnRAg",
+   "flottant": [
+    0.06,
+    0.8
+   ],
+   "stattrak": false,
+   "souvenir": false
+  },
+  {
+   "id": "moto-gloves-pow",
+   "nom": "★ Moto Gloves | POW!",
+   "arme": "Moto Gloves",
+   "finition": "POW!",
+   "categorie": "gants",
+   "rarete": "★ Objet rare spécial",
+   "couleur": "#e4ae39",
+   "collection": "Clutch Case",
+   "prix": "≈ 500 – 2 000 $",
+   "anecdote": "Style bande dessinée avec des « POW! » partout.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu4r7_lb1QgTykpPf-i5U-fe9V6liNP-BDX6TzetJs-lmTCaMlxIovgKJk4jxNWXBPAZ2CpYmTOAO4UWwltOxP-3qswPdgopMzXiviSwavytpsO4FUvEh5OSJ2LE4Jnt4",
+   "flottant": [
+    0.06,
+    0.8
+   ],
+   "stattrak": false,
+   "souvenir": false
+  },
+  {
+   "id": "hand-wraps-slaughter",
+   "nom": "★ Hand Wraps | Slaughter",
+   "arme": "Hand Wraps",
+   "finition": "Slaughter",
+   "categorie": "gants",
+   "rarete": "★ Objet rare spécial",
+   "couleur": "#e4ae39",
+   "collection": "Glove Case",
+   "prix": "≈ 300 – 1 200 $",
+   "anecdote": "Bandages au motif « Slaughter » rouge et blanc.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu4vx603vRA_Olpfu-TVJ7uK9V6xsLvSEHGaA_vxztN56QyimkhUzti-6lob-KT-Jb1UjX5t0ROIN5xW9l9e2ZOmw5QWLi41Fmy6r3Sgb7C1o5etUBfcgqbqX0V-0bsdMFQ",
+   "flottant": [
+    0.06,
+    0.8
+   ],
+   "stattrak": false,
+   "souvenir": false
+  },
+  {
+   "id": "ak-47-the-empress",
+   "nom": "AK-47 | The Empress",
+   "arme": "AK-47",
+   "finition": "The Empress",
+   "categorie": "fusil",
+   "rarete": "Secret",
+   "couleur": "#eb4b4b",
+   "collection": "The Spectrum 2 Collection",
+   "prix": "≈ 80 – 400 $",
+   "anecdote": "Une impératrice et des têtes de mort dorées sur la crosse.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLwlcK3wiVI0POlPPNSJf2DHGKD0tF6ueZhW2exxEt152rWzI7_Ii-Ubw90DMB0Ee4C5xOwx9GxZbjk71PXgogWn36tkGoXudZeYvlo",
+   "flottant": [
+    0,
+    1
+   ],
+   "stattrak": true,
+   "souvenir": true
+  },
+  {
+   "id": "ak-47-bloodsport",
+   "nom": "AK-47 | Bloodsport",
+   "arme": "AK-47",
+   "finition": "Bloodsport",
+   "categorie": "fusil",
+   "rarete": "Secret",
+   "couleur": "#eb4b4b",
+   "collection": "The Spectrum Collection",
+   "prix": "≈ 80 – 200 $",
+   "anecdote": "Rouge, blanc et noir, très agressif.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLwlcK3wiVI0POlPPNSIvycAWOD0eFkpN5lRi67gVN15mmDw9egci_EPFAkDMQlTeZe4EXplNa0Yrvr5wbd345GyHioiC4b8G81tFuqg_k_",
+   "flottant": [
+    0,
+    0.45
+   ],
+   "stattrak": true,
+   "souvenir": true
+  },
+  {
+   "id": "ak-47-neon-rider",
+   "nom": "AK-47 | Neon Rider",
+   "arme": "AK-47",
+   "finition": "Neon Rider",
+   "categorie": "fusil",
+   "rarete": "Secret",
+   "couleur": "#eb4b4b",
+   "collection": "The Horizon Collection",
+   "prix": "≈ 30 – 150 $",
+   "anecdote": "Ambiance rétro néon années 80.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLwlcK3wiFO0POlV6poL_6sHG6UxPxJvOhuRz39xkQhsTnVzoygdy7Ea1UoCZQkRe9bs0brl9TvN-m0tVHYjY5CyS35jjQJsHhk4o5zcA",
+   "flottant": [
+    0,
+    0.8
+   ],
+   "stattrak": true,
+   "souvenir": true
+  },
+  {
+   "id": "ak-47-head-shot",
+   "nom": "AK-47 | Head Shot",
+   "arme": "AK-47",
+   "finition": "Head Shot",
+   "categorie": "fusil",
+   "rarete": "Secret",
+   "couleur": "#eb4b4b",
+   "collection": "The Revolution Collection",
+   "prix": "≈ 20 – 80 $",
+   "anecdote": "Un des AK récents de CS2, graphique et coloré.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLwlcK3wiFO0POlV6xoIfSsHW-f1dF-v-1mcCW6khUz_TzRnNigd3-SOg4lAsF1QOQN4xS4wdHnMu-0swaMjIxExSSoiyof6ih1o7FVGHIdVhw",
+   "flottant": [
+    0,
+    1
+   ],
+   "stattrak": true,
+   "souvenir": true
+  },
+  {
+   "id": "ak-47-nightwish",
+   "nom": "AK-47 | Nightwish",
+   "arme": "AK-47",
+   "finition": "Nightwish",
+   "categorie": "fusil",
+   "rarete": "Secret",
+   "couleur": "#eb4b4b",
+   "collection": "The Dreams & Nightmares Collection",
+   "prix": "≈ 40 – 120 $",
+   "anecdote": "Ciel étoilé violet et créatures de rêve.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLwlcK3wiFO0POlPPNSLvmUBnOHyP1-j-1gSCGn20glt2nXnt78cnKUbwN2XJp2R-ZbuxHqlNXlMLiw5AHc3toWnCur23hXrnE8p0T2bx4",
+   "flottant": [
+    0,
+    1
+   ],
+   "stattrak": true,
+   "souvenir": true
+  },
+  {
+   "id": "m4a4-temukau",
+   "nom": "M4A4 | Temukau",
+   "arme": "M4A4",
+   "finition": "Temukau",
+   "categorie": "fusil",
+   "rarete": "Secret",
+   "couleur": "#eb4b4b",
+   "collection": "The Revolution Collection",
+   "prix": "≈ 30 – 120 $",
+   "anecdote": "Le premier M4 « couverture » de CS2 : couleurs vives et masque.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyL8ypexwiFO0P_6afBSNPWeG2yR1NF6ueZhW2ewlBtx5W6AmYv9JS6XaAV1CJEmTeUL4UTpxNzjZO3jtgaIjN9ExCuskGoXuRnyRhBA",
+   "flottant": [
+    0,
+    0.8
+   ],
+   "stattrak": true,
+   "souvenir": true
+  },
+  {
+   "id": "m4a4-eye-of-horus",
+   "nom": "M4A4 | Eye of Horus",
+   "arme": "M4A4",
+   "finition": "Eye of Horus",
+   "categorie": "fusil",
+   "rarete": "Secret",
+   "couleur": "#eb4b4b",
+   "collection": "The Anubis Collection",
+   "prix": "≈ 1 500 – 3 000 $",
+   "anecdote": "Or et lapis-lazuli : l'Égypte antique, collection Anubis.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyL8ypexwiVI0P_6afBSMvGsAm6Xyfo46eU5H3DnlxlytTyDwtr_JHmQZw4hC5R5RrRbtRO5xtCyZrzktgCI2ZUFk3sFC5kC3A",
+   "flottant": [
+    0,
+    0.7
+   ],
+   "stattrak": false,
+   "souvenir": true
+  },
+  {
+   "id": "m4a1-s-blue-phosphor",
+   "nom": "M4A1-S | Blue Phosphor",
+   "arme": "M4A1-S",
+   "finition": "Blue Phosphor",
+   "categorie": "fusil",
+   "rarete": "Classifié",
+   "couleur": "#d32ce6",
+   "collection": "The Control Collection",
+   "prix": "≈ 600 – 1 500 $",
+   "anecdote": "Bleu phosphorescent, un des M4A1-S les plus rares.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyL8ypexwjFS4_ega6F_H_GeMWrEwL9lj-NlWiygmBIstgKJk4jxNWWeOg5xDJR2Q-5b5BGwxIDuP7uw4ALa3ohMz3n3iypLvyc55-pQUKct5OSJ2OKlF5Nn",
+   "flottant": [
+    0,
+    0.08
+   ],
+   "stattrak": false,
+   "souvenir": true
+  },
+  {
+   "id": "m4a1-s-imminent-danger",
+   "nom": "M4A1-S | Imminent Danger",
+   "arme": "M4A1-S",
+   "finition": "Imminent Danger",
+   "categorie": "fusil",
+   "rarete": "Secret",
+   "couleur": "#eb4b4b",
+   "collection": "The 2021 Vertigo Collection",
+   "prix": "≈ 1 000 – 3 000 $",
+   "anecdote": "Panneau « danger » jaune et noir, collection Control.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyL8ypexwjFS4_ega6F_H_eAMWrEwL9JpuR7WyC0miIrujqNjsGpciiVZgIpCpAjEOUPuhXuw93kZOzm4laPi4IRyij-2H9P6yc65rwCT-N7rc1sfRJu",
+   "flottant": [
+    0,
+    0.8
+   ],
+   "stattrak": false,
+   "souvenir": true
+  },
+  {
+   "id": "m4a1-s-icarus-fell",
+   "nom": "M4A1-S | Icarus Fell",
+   "arme": "M4A1-S",
+   "finition": "Icarus Fell",
+   "categorie": "fusil",
+   "rarete": "Restreint",
+   "couleur": "#8847ff",
+   "collection": "The Gods and Monsters Collection",
+   "prix": "≈ 400 – 900 $",
+   "anecdote": "Bleu ciel et or, en hommage au mythe d'Icare.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyL8ypexwjFS4_ega6F_H_iKMW6TwPxjo95lRi67gVN_smmHyor9eHyUZwImDpJzEeZf4xS6kN2zY77i7wPdjtgXn3msin4b8G81tDwr8lc2",
+   "flottant": [
+    0,
+    0.1
+   ],
+   "stattrak": false,
+   "souvenir": true
+  },
+  {
+   "id": "awp-containment-breach",
+   "nom": "AWP | Containment Breach",
+   "arme": "AWP",
+   "finition": "Containment Breach",
+   "categorie": "sniper",
+   "rarete": "Secret",
+   "couleur": "#eb4b4b",
+   "collection": "The Shattered Web Collection",
+   "prix": "≈ 60 – 300 $",
+   "anecdote": "Vert toxique et fuite radioactive.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLwiYbf_jdk7uW-V7JkMuWAMWuZxuZi_rQ6SXq1xURysj_Vw4uhJHOVPQ8oCZt4QrRbtRi6ldPlPu_g4FHaiYNbjXKpcPI_17A",
+   "flottant": [
+    0,
+    1
+   ],
+   "stattrak": true,
+   "souvenir": true
+  },
+  {
+   "id": "awp-hyper-beast",
+   "nom": "AWP | Hyper Beast",
+   "arme": "AWP",
+   "finition": "Hyper Beast",
+   "categorie": "sniper",
+   "rarete": "Secret",
+   "couleur": "#eb4b4b",
+   "collection": "The Falchion Collection",
+   "prix": "≈ 30 – 150 $",
+   "anecdote": "Le monstre fluo, un classique coloré.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLwiYbf_jdk7uW-V6x0MPWBMWWVwP1ij-1gSCGn20pxtm_WzNuoeHKeaFAnCZUiTe5bt0HqxofmZOrm5Q2IjoMQzS_5iShXrnE8NzWs__c",
+   "flottant": [
+    0,
+    1
+   ],
+   "stattrak": true,
+   "souvenir": true
+  },
+  {
+   "id": "awp-oni-taiji",
+   "nom": "AWP | Oni Taiji",
+   "arme": "AWP",
+   "finition": "Oni Taiji",
+   "categorie": "sniper",
+   "rarete": "Secret",
+   "couleur": "#eb4b4b",
+   "collection": "The Operation Hydra Collection",
+   "prix": "≈ 150 – 400 $",
+   "anecdote": "Démon japonais rouge et blanc.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLwiYbf_jdk7uW-V6xsLv6KD1icyOl-pK9vGCqwkx524G_WnNmsInyXOAVyXJJ0TbNb5EOxxIflYbzj4gDdiNlC02yg2XaKgrAq",
+   "flottant": [
+    0,
+    0.5
+   ],
+   "stattrak": true,
+   "souvenir": true
+  },
+  {
+   "id": "awp-graphite",
+   "nom": "AWP | Graphite",
+   "arme": "AWP",
+   "finition": "Graphite",
+   "categorie": "sniper",
+   "rarete": "Classifié",
+   "couleur": "#d32ce6",
+   "collection": "The Bravo Collection",
+   "prix": "≈ 150 – 400 $",
+   "anecdote": "Gris métal très propre, recherché en neuf.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLwiYbf_C9k7OC7ZbRhJc-RHGaGztF6ueZhW2e2k0l2sW_WzN7_cS6SbgV1CsF3TOEI4EOwloGzNLzg5g3fiIpHxC78kGoXuTqeOjwH",
+   "flottant": [
+    0,
+    0.12
+   ],
+   "stattrak": true,
+   "souvenir": true
+  },
+  {
+   "id": "awp-chrome-cannon",
+   "nom": "AWP | Chrome Cannon",
+   "arme": "AWP",
+   "finition": "Chrome Cannon",
+   "categorie": "sniper",
+   "rarete": "Secret",
+   "couleur": "#eb4b4b",
+   "collection": "The Kilowatt Collection",
+   "prix": "≈ 60 – 200 $",
+   "anecdote": "Un AWP chromé au look de canon : arrivé avec CS2.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLwiYbf_DVL0OarZbRoMvWXMWuZxuZi_uM6SXngxR5-smTXw4ugIi6RbVcpXsN1ELUDtxPrktOyNL7h4g2P2tpbjXKpKIbjbD4",
+   "flottant": [
+    0,
+    1
+   ],
+   "stattrak": true,
+   "souvenir": true
+  },
+  {
+   "id": "awp-atheris",
+   "nom": "AWP | Atheris",
+   "arme": "AWP",
+   "finition": "Atheris",
+   "categorie": "sniper",
+   "rarete": "Restreint",
+   "couleur": "#8847ff",
+   "collection": "The Prisma Collection",
+   "prix": "≈ 5 – 20 $",
+   "anecdote": "Serpent bleu et violet : beau et pas cher.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLwiYbf_jdk7uW-V7JkMPWBMWuZxuZi_rZsS3zgzU8isW3dnIr6eHKfPVAhDpojEe9YsUW4xta1Nuzm5FDci4NbjXKpmWVQppo",
+   "flottant": [
+    0,
+    1
+   ],
+   "stattrak": true,
+   "souvenir": true
+  },
+  {
+   "id": "desert-eagle-golden-koi",
+   "nom": "Desert Eagle | Golden Koi",
+   "arme": "Desert Eagle",
+   "finition": "Golden Koi",
+   "categorie": "pistolet",
+   "rarete": "Secret",
+   "couleur": "#eb4b4b",
+   "collection": "The Bravo Collection",
+   "prix": "≈ 40 – 100 $",
+   "anecdote": "Carpes koï dorées sur fond noir.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyL1m5fn8Sdk7v-Re6dsLPWAMWWCwPh5j-1gSCGn20om6jyGw9qgJHmQaAcgC8MmR7IMthm5m4W2M7zj7wOIj4pGn32o23hXrnE8VHBG1O4",
+   "flottant": [
+    0,
+    0.12
+   ],
+   "stattrak": true,
+   "souvenir": true
+  },
+  {
+   "id": "desert-eagle-code-red",
+   "nom": "Desert Eagle | Code Red",
+   "arme": "Desert Eagle",
+   "finition": "Code Red",
+   "categorie": "pistolet",
+   "rarete": "Secret",
+   "couleur": "#eb4b4b",
+   "collection": "The Horizon Collection",
+   "prix": "≈ 40 – 120 $",
+   "anecdote": "Rouge et noir, style alerte.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyL1m5fn8Sdk6OGRbKFsJ_yWMWaXxvxzo_JmXRa_nBovp3PRmNj4c3mTb1RxC5cjF-EItRnrlNzkYrnk5gaI3Y0UmyX52H9K7ixs_a9cBsGEcOCn",
+   "flottant": [
+    0,
+    1
+   ],
+   "stattrak": true,
+   "souvenir": true
+  },
+  {
+   "id": "desert-eagle-ocean-drive",
+   "nom": "Desert Eagle | Ocean Drive",
+   "arme": "Desert Eagle",
+   "finition": "Ocean Drive",
+   "categorie": "pistolet",
+   "rarete": "Secret",
+   "couleur": "#eb4b4b",
+   "collection": "The Operation Riptide Collection",
+   "prix": "≈ 20 – 80 $",
+   "anecdote": "Miami, néons et palmiers.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyL1m5fn8Sdk7OeRbKFsJ_yWMWyZ1e1-j-1gSCGn2x5-sG7Wzdyvc3OSbgcnXpR5FO9bukTtm9WzMePhswaN2N5CmCj_jyhXrnE8ibjhEyc",
+   "flottant": [
+    0,
+    1
+   ],
+   "stattrak": true,
+   "souvenir": true
+  },
+  {
+   "id": "usp-s-the-traitor",
+   "nom": "USP-S | The Traitor",
+   "arme": "USP-S",
+   "finition": "The Traitor",
+   "categorie": "pistolet",
+   "rarete": "Secret",
+   "couleur": "#eb4b4b",
+   "collection": "The Snakebite Collection",
+   "prix": "≈ 30 – 100 $",
+   "anecdote": "Visage déchiré, ambiance thriller.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLkjYbf7itX6vytbbZSJ-OsG3SA0tF-se9uSi2-lBMYvzSCkpu3eX7EP1MpApdwR-8NsxbukoXuNLnj4QOMiN8XzHn_iC8a7Spi4upRWb1lpPOCQNKXgA",
+   "flottant": [
+    0,
+    1
+   ],
+   "stattrak": true,
+   "souvenir": true
+  },
+  {
+   "id": "usp-s-printstream",
+   "nom": "USP-S | Printstream",
+   "arme": "USP-S",
+   "finition": "Printstream",
+   "categorie": "pistolet",
+   "rarete": "Secret",
+   "couleur": "#eb4b4b",
+   "collection": "The Recoil Collection",
+   "prix": "≈ 40 – 150 $",
+   "anecdote": "Le noir et blanc nacré des Printstream.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLkjYbf7itX6vytbbZSI-WsG3SA_v5kue99XD2hkBwqjDGMnYftb3yUPFR0XsNyRrNc5kO5ltziMenr5lONj4kXyi2riywc7y9o5LtQAqQ7uvqAkScWnv4",
+   "flottant": [
+    0,
+    0.85
+   ],
+   "stattrak": true,
+   "souvenir": true
+  },
+  {
+   "id": "glock-18-gamma-doppler",
+   "nom": "Glock-18 | Gamma Doppler",
+   "arme": "Glock-18",
+   "finition": "Gamma Doppler",
+   "categorie": "pistolet",
+   "rarete": "Secret",
+   "couleur": "#eb4b4b",
+   "collection": "The 2021 Train Collection",
+   "prix": "≈ 30 – 300 $ (selon la phase)",
+   "anecdote": "Le Gamma Doppler arrive sur le Glock avec CS2.",
+   "image": "https://community.akamai.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyL2kpnj9h1a4s2paalgIc-XAXeAzetkj_FhTjq2wSIgvzKGkbD1KCzPKhhxC5FyRbII4Ua_ltDhY-Ln41fW2I1Ayn_9ii5P7Xpr5ekHV6Mg__HekUifZpA8glcU",
+   "flottant": [
+    0,
+    0.5
+   ],
+   "stattrak": false,
+   "souvenir": true
   }
  ]
 }

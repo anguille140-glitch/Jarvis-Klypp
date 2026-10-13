@@ -175,71 +175,146 @@ body.inspect .letterbox { height: 9vh; }
   letter-spacing: .3em; font-size: 15px; text-transform: uppercase; color: var(--ink-dim); opacity: 0; transition: opacity .5s; }
 body.inspect #inspTitle { opacity: 1; }
 
-/* ---------- ouverture de caisse (intro et bouton) ---------- */
-#crate { position: fixed; inset: 0; z-index: 20; background: radial-gradient(ellipse at 50% 45%, #141a22, #040506 70%);
-  display: grid; place-items: center; overflow: hidden; }
+/* ---------- ouverture de caisse : « matrice de déchiffrement » holographique ---------- */
+#crate { position: fixed; inset: 0; z-index: 20; overflow: hidden; perspective: 1300px;
+  background: radial-gradient(ellipse at 50% 46%, #0b1a24 0%, #050a10 45%, #020305 80%); --cy: #4fd8ff; }
 #crate[hidden] { display: none; }
 #crate.out { animation: crateOut .9s ease forwards; }
-@keyframes crateOut { to { opacity: 0; visibility: hidden; } }
-#crate .scan { position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(255,255,255,.025) 0 1px, transparent 1px 3px); pointer-events: none; }
-#crate .boot { position: absolute; left: 48px; top: 44px; font-family: var(--f-head); font-weight: 600; font-size: 14px; letter-spacing: .24em;
-  color: var(--ink-dim); white-space: pre; line-height: 1.8; }
-#crate .boot b { color: var(--amber); }
-#box { position: relative; width: 420px; height: 250px; transform: scale(.6); opacity: 0; }
-#box.in { animation: boxIn 1s cubic-bezier(.2,1.3,.3,1) forwards; }
-#box.open { animation: boxOpen .8s ease forwards; }
-@keyframes boxIn { to { transform: scale(1); opacity: 1; } }
-@keyframes boxOpen { 0% { transform: scale(1); opacity: 1; } 40% { transform: scale(1.06); } 100% { transform: scale(1.5); opacity: 0; filter: brightness(3); } }
-#box .body { position: absolute; inset: 40px 0 0; border-radius: 10px; background: linear-gradient(180deg, #2a2f36, #15181d);
-  box-shadow: inset 0 0 0 2px #3a4048, inset 0 -18px 30px rgba(0,0,0,.6), 0 30px 60px rgba(0,0,0,.6); }
-#box .body::before { content: ""; position: absolute; left: 0; right: 0; top: 46%; height: 34px;
-  background: repeating-linear-gradient(135deg, #f2a93b 0 18px, #1a1a1a 18px 36px); opacity: .9; }
-#box .lid { position: absolute; left: -6px; right: -6px; top: 22px; height: 52px; border-radius: 8px; background: linear-gradient(180deg, #3a4048, #22262c);
-  box-shadow: inset 0 0 0 2px #4a515a; transform-origin: 50% 100%; transition: transform .6s cubic-bezier(.3,1.4,.4,1); }
-#box.open .lid { transform: translateY(-40px) rotateX(70deg); }
-#box .lock { position: absolute; left: 50%; top: 58px; width: 56px; height: 64px; transform: translateX(-50%); border-radius: 8px;
-  background: linear-gradient(180deg, #ffcf73, #c27a12); box-shadow: 0 0 30px rgba(242,169,59,.7); }
-#box .lock::after { content: ""; position: absolute; left: 50%; top: 18px; width: 12px; height: 22px; transform: translateX(-50%); border-radius: 6px; background: #3a2405; }
-#box .label { position: absolute; left: 0; right: 0; bottom: -46px; text-align: center; font-family: var(--f-head); font-weight: 800; font-size: 22px;
-  letter-spacing: .3em; color: var(--ink); }
-#reel { position: absolute; left: 0; right: 0; top: 50%; height: 190px; transform: translateY(-50%); opacity: 0; transition: opacity .4s; }
-#reel.on { opacity: 1; }
-#reel::before, #reel::after { content: ""; position: absolute; top: 0; bottom: 0; width: 22vw; z-index: 2; pointer-events: none; }
-#reel::before { left: 0; background: linear-gradient(90deg, #06080a, transparent); }
-#reel::after { right: 0; background: linear-gradient(-90deg, #06080a, transparent); }
-#strip { position: absolute; left: 50%; top: 0; height: 100%; display: flex; gap: 6px; will-change: transform; }
-.rc { flex: 0 0 200px; height: 100%; position: relative; background: linear-gradient(170deg, #20262e, #0d1014); border: 1px solid rgba(255,255,255,.06); }
-.rc::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: var(--c); box-shadow: 0 0 18px var(--c); }
-.rc::before { content: ""; position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 100%, color-mix(in srgb, var(--c) 30%, transparent), transparent 70%); }
-.rc img { position: absolute; inset: 14px 12px 34px; width: calc(100% - 24px); height: calc(100% - 48px); object-fit: contain; }
-.rc span { position: absolute; left: 10px; right: 10px; bottom: 12px; font-family: var(--f-head); font-weight: 600; font-size: 13px; color: #d7d0c3;
+@keyframes crateOut { 0% { opacity: 1; filter: none; } 30% { filter: brightness(1.8) saturate(1.4); } 100% { opacity: 0; visibility: hidden; transform: scale(1.06); filter: blur(6px); } }
+#crate .scan { position: absolute; inset: 0; z-index: 9; background: repeating-linear-gradient(0deg, rgba(160,230,255,.035) 0 1px, transparent 1px 3px); pointer-events: none; }
+/* sol en grille qui file vers l'horizon + grille hexagonale */
+#crate .floor { position: absolute; left: -50%; right: -50%; top: 58%; height: 90vh; transform-origin: 50% 0; transform: rotateX(78deg);
+  background-image: linear-gradient(rgba(79,216,255,.28) 1px, transparent 1px), linear-gradient(90deg, rgba(79,216,255,.28) 1px, transparent 1px);
+  background-size: 64px 64px; animation: floorRun 1.6s linear infinite;
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 25%, transparent 90%); mask-image: linear-gradient(180deg, transparent, #000 25%, transparent 90%); }
+@keyframes floorRun { to { background-position: 0 64px; } }
+#crate.fast .floor { animation-duration: .25s; }
+#crate .hex { position: absolute; inset: 0; opacity: .22; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='97'%3E%3Cpath d='M28 0L56 16v32L28 64 0 48V16zM28 64v33' fill='none' stroke='%234fd8ff' stroke-width='1' opacity='.5'/%3E%3C/svg%3E");
+  -webkit-mask-image: radial-gradient(ellipse at 50% 45%, #000 0, transparent 60%); mask-image: radial-gradient(ellipse at 50% 45%, #000 0, transparent 60%);
+  animation: hexPulse 3s ease-in-out infinite; }
+@keyframes hexPulse { 50% { opacity: .36; } }
+#crate .boot { position: absolute; left: 48px; top: 44px; z-index: 8; font-family: var(--f-head); font-weight: 600; font-size: 14px; letter-spacing: .24em;
+  color: #7fa9bd; white-space: pre; line-height: 1.8; text-shadow: 0 0 10px rgba(79,216,255,.35); }
+#crate .boot b { color: var(--cy); }
+#crate .boot i { color: var(--amber); font-style: normal; }
+#crate .corner { position: absolute; width: 90px; height: 90px; border: 2px solid rgba(79,216,255,.5); z-index: 8; pointer-events: none; }
+#crate .corner.a { left: 22px; top: 22px; border-right: 0; border-bottom: 0; } #crate .corner.b { right: 22px; top: 22px; border-left: 0; border-bottom: 0; }
+#crate .corner.c { left: 22px; bottom: 22px; border-right: 0; border-top: 0; } #crate .corner.d { right: 22px; bottom: 22px; border-left: 0; border-top: 0; }
+#crate .hudR { position: absolute; right: 48px; top: 44px; z-index: 8; text-align: right; font-family: var(--f-head); font-size: 12px; letter-spacing: .3em; color: #7fa9bd; line-height: 1.9; }
+#crate .hudR b { color: var(--cy); font-size: 20px; letter-spacing: .12em; }
+/* 1. le cube de données (CSS 3D) */
+#cube3 { position: absolute; left: 50%; top: 45%; width: 0; height: 0; transform-style: preserve-3d; opacity: 0; transition: opacity .6s; }
+#cube3.in { opacity: 1; }
+#cube3 .spin { position: absolute; transform-style: preserve-3d; animation: cubeSpin 7s linear infinite; }
+#crate.fast #cube3 .spin { animation-duration: 1.1s; }
+@keyframes cubeSpin { from { transform: rotateX(-22deg) rotateY(0); } to { transform: rotateX(-22deg) rotateY(360deg); } }
+#cube3 .f { position: absolute; left: -110px; top: -110px; width: 220px; height: 220px; border: 2px solid var(--cy);
+  background: linear-gradient(135deg, rgba(79,216,255,.16), rgba(79,216,255,.03) 60%), repeating-linear-gradient(0deg, rgba(79,216,255,.09) 0 1px, transparent 1px 8px);
+  box-shadow: 0 0 26px rgba(79,216,255,.45), inset 0 0 40px rgba(79,216,255,.25); transition: transform .9s cubic-bezier(.2,.9,.2,1), opacity .9s; backface-visibility: visible; }
+#cube3 .f::before { content: ""; position: absolute; inset: 18px; border: 1px dashed rgba(79,216,255,.45); }
+#cube3 .f::after { content: "◈"; position: absolute; inset: 0; display: grid; place-items: center; font-size: 54px; color: rgba(79,216,255,.55); text-shadow: 0 0 18px var(--cy); }
+#cube3 .f1 { transform: translateZ(110px); } #cube3 .f2 { transform: rotateY(180deg) translateZ(110px); }
+#cube3 .f3 { transform: rotateY(90deg) translateZ(110px); } #cube3 .f4 { transform: rotateY(-90deg) translateZ(110px); }
+#cube3 .f5 { transform: rotateX(90deg) translateZ(110px); } #cube3 .f6 { transform: rotateX(-90deg) translateZ(110px); }
+#cube3.boom .f1 { transform: translateZ(620px) rotateZ(40deg); opacity: 0; } #cube3.boom .f2 { transform: rotateY(180deg) translateZ(620px) rotateZ(-30deg); opacity: 0; }
+#cube3.boom .f3 { transform: rotateY(90deg) translateZ(620px) rotateX(50deg); opacity: 0; } #cube3.boom .f4 { transform: rotateY(-90deg) translateZ(620px) rotateX(-50deg); opacity: 0; }
+#cube3.boom .f5 { transform: rotateX(90deg) translateZ(620px); opacity: 0; } #cube3.boom .f6 { transform: rotateX(-90deg) translateZ(620px); opacity: 0; }
+#cube3 .core { position: absolute; left: -46px; top: -46px; width: 92px; height: 92px; border-radius: 50%;
+  background: radial-gradient(circle, #fff 0, #bff3ff 18%, rgba(79,216,255,.7) 40%, transparent 70%); animation: corePulse 1s ease-in-out infinite; }
+@keyframes corePulse { 50% { transform: scale(1.25); filter: brightness(1.5); } }
+#cube3.unlock .core { animation: coreBlow .7s ease-out forwards; }
+@keyframes coreBlow { to { transform: scale(9); opacity: 0; } }
+#cube3 .ring { position: absolute; left: -170px; top: -170px; width: 340px; height: 340px; border-radius: 50%; border: 2px solid rgba(79,216,255,.55);
+  border-left-color: transparent; border-right-color: transparent; transform-style: preserve-3d; }
+#cube3 .ring.r1 { animation: ringA 3s linear infinite; } #cube3 .ring.r2 { animation: ringB 4.4s linear infinite; left: -200px; top: -200px; width: 400px; height: 400px; border-color: rgba(242,169,59,.5) transparent; }
+@keyframes ringA { from { transform: rotateX(72deg) rotateZ(0); } to { transform: rotateX(72deg) rotateZ(360deg); } }
+@keyframes ringB { from { transform: rotateY(64deg) rotateZ(0); } to { transform: rotateY(64deg) rotateZ(-360deg); } }
+#cube3.boom .ring { transition: transform .8s, opacity .8s; opacity: 0; }
+#cube3 .laser { position: absolute; left: -240px; width: 480px; height: 3px; top: -150px; background: linear-gradient(90deg, transparent, #bff3ff, #fff, #bff3ff, transparent);
+  box-shadow: 0 0 22px 4px rgba(79,216,255,.8); animation: laser 1.5s ease-in-out infinite alternate; opacity: .9; }
+@keyframes laser { to { top: 150px; } }
+#cube3.boom .laser, #cube3.boom .lbl { display: none; }
+#cube3 .lbl { position: absolute; left: -300px; width: 600px; top: 190px; text-align: center; font-family: var(--f-head); font-weight: 700; font-size: 16px; letter-spacing: .5em; color: var(--cy);
+  text-shadow: 0 0 14px rgba(79,216,255,.8); }
+#cube3 .lbl small { display: block; margin-top: 10px; font-size: 11px; letter-spacing: .4em; color: #7fa9bd; }
+#cube3 .bar { width: 260px; height: 3px; margin: 12px auto 0; background: rgba(79,216,255,.18); overflow: hidden; }
+#cube3 .bar i { display: block; height: 100%; width: var(--p, 0%); background: var(--cy); box-shadow: 0 0 10px var(--cy); transition: width .25s; }
+#shock { position: absolute; left: 50%; top: 45%; width: 40px; height: 40px; margin: -20px; border-radius: 50%; border: 3px solid #bff3ff; opacity: 0; pointer-events: none;
+  box-shadow: 0 0 40px #4fd8ff, inset 0 0 30px #4fd8ff; }
+#shock.go { animation: shock .9s cubic-bezier(.1,.7,.3,1) forwards; }
+@keyframes shock { 0% { opacity: 1; transform: scale(.4); } 100% { opacity: 0; transform: scale(60); border-width: 1px; } }
+#flash { position: absolute; inset: 0; background: #e8fbff; opacity: 0; pointer-events: none; z-index: 7; mix-blend-mode: screen; }
+#flash.go { animation: flash .6s ease-out; }
+@keyframes flash { 0% { opacity: .85; } 100% { opacity: 0; } }
+/* 2. le carrousel holographique courbe */
+#ring { position: absolute; left: 50%; top: 45%; width: 0; height: 0; transform-style: preserve-3d; opacity: 0; transition: opacity .5s; }
+#ring.on { opacity: 1; }
+.rc { position: absolute; left: -100px; top: -118px; width: 200px; height: 236px; transform-style: preserve-3d; will-change: transform, opacity;
+  background: linear-gradient(170deg, rgba(20,40,54,.82), rgba(5,10,16,.9)); border: 1px solid color-mix(in srgb, var(--c) 45%, transparent);
+  clip-path: polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100% 100%, 22px 100%, 0 calc(100% - 22px)); backface-visibility: hidden; }
+.rc::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 5px; background: var(--c); box-shadow: 0 0 18px var(--c); }
+.rc::before { content: ""; position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 100%, color-mix(in srgb, var(--c) 35%, transparent), transparent 70%),
+  repeating-linear-gradient(0deg, rgba(255,255,255,.035) 0 1px, transparent 1px 4px); }
+.rc img { position: absolute; left: 12px; top: 26px; width: calc(100% - 24px); height: 150px; object-fit: contain; filter: drop-shadow(0 0 10px color-mix(in srgb, var(--c) 50%, transparent)); }
+.rc em { position: absolute; left: 12px; top: 8px; font-style: normal; font-family: var(--f-head); font-size: 10px; letter-spacing: .3em; color: var(--c); opacity: .85; }
+.rc span { position: absolute; left: 12px; right: 12px; bottom: 16px; font-family: var(--f-head); font-weight: 600; font-size: 13px; color: #d7e6ee;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rc.star img { filter: blur(6px) brightness(.6); }
+.rc.hot { background: linear-gradient(170deg, rgba(40,80,100,.9), rgba(5,10,16,.9)); }
+.rc.star img { filter: blur(7px) brightness(.5); }
 .rc.star .q { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--f-head); font-weight: 800; font-size: 64px; color: #e4ae39;
   text-shadow: 0 0 24px rgba(228,174,57,.9); }
-.rc.win { box-shadow: 0 0 0 2px var(--c), 0 0 40px var(--c); }
-.rc.win img { filter: none; }
+.rc.win { border-color: var(--c); box-shadow: inset 0 0 40px color-mix(in srgb, var(--c) 50%, transparent); }
+.rc.win img { filter: drop-shadow(0 0 16px var(--c)); }
 .rc.win .q { display: none; }
-#marker { position: absolute; left: 50%; top: -14px; bottom: -14px; width: 3px; transform: translateX(-50%); background: var(--amber-hot);
-  box-shadow: 0 0 14px var(--amber); z-index: 3; }
-#marker::before, #marker::after { content: ""; position: absolute; left: 50%; transform: translateX(-50%); border: 10px solid transparent; }
-#marker::before { top: -6px; border-top-color: var(--amber-hot); }
-#marker::after { bottom: -6px; border-bottom-color: var(--amber-hot); }
+#beam { position: absolute; left: 50%; top: calc(45% - 190px); height: 380px; width: 2px; margin-left: -1px; z-index: 5; opacity: 0; transition: opacity .4s;
+  background: linear-gradient(180deg, transparent, #fff 15%, #bff3ff 50%, #fff 85%, transparent); box-shadow: 0 0 18px 3px rgba(79,216,255,.9), 0 0 60px 8px rgba(79,216,255,.4); }
+#beam.on { opacity: 1; }
+#beam::before, #beam::after { content: ""; position: absolute; left: 50%; width: 22px; height: 22px; margin-left: -11px; border: 2px solid #bff3ff; transform: rotate(45deg); box-shadow: 0 0 12px #4fd8ff; }
+#beam::before { top: -14px; } #beam::after { bottom: -14px; }
+#speed { position: absolute; left: 50%; top: calc(45% + 200px); transform: translateX(-50%); font-family: var(--f-head); font-size: 12px; letter-spacing: .4em; color: #7fa9bd; opacity: 0; transition: opacity .4s; }
+#speed.on { opacity: 1; } #speed b { color: var(--cy); }
+/* 3. matérialisation */
 #reveal { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; opacity: 0; }
 #reveal.on { opacity: 1; transition: opacity .3s; }
-#rays { position: absolute; left: 50%; top: 46%; width: 140vmax; height: 140vmax; transform: translate(-50%, -50%);
-  background: repeating-conic-gradient(from 0deg, color-mix(in srgb, var(--rar) 40%, transparent) 0 6deg, transparent 6deg 18deg);
-  -webkit-mask-image: radial-gradient(closest-side, #000, transparent 70%); mask-image: radial-gradient(closest-side, #000, transparent 70%);
-  animation: rays 14s linear infinite; opacity: .55; }
+#rays { position: absolute; left: 50%; top: 44%; width: 140vmax; height: 140vmax; transform: translate(-50%, -50%);
+  background: repeating-conic-gradient(from 0deg, color-mix(in srgb, var(--rar) 32%, transparent) 0 2deg, transparent 2deg 12deg);
+  -webkit-mask-image: radial-gradient(closest-side, #000, transparent 65%); mask-image: radial-gradient(closest-side, #000, transparent 65%);
+  animation: rays 18s linear infinite; opacity: .45; }
 @keyframes rays { to { transform: translate(-50%, -50%) rotate(1turn); } }
-#reveal img { position: relative; width: min(56vw, 860px); aspect-ratio: 4/3; object-fit: contain; transform: scale(.4);
-  filter: drop-shadow(0 0 40px var(--rar)); }
-#reveal.on img { animation: pop .9s cubic-bezier(.2,1.5,.3,1) forwards; }
-@keyframes pop { to { transform: scale(1); } }
-#reveal .rt { position: absolute; left: 0; right: 0; bottom: 12vh; text-align: center; font-family: var(--f-head); }
-#reveal .rt small { display: block; font-weight: 700; letter-spacing: .4em; font-size: 14px; color: var(--rar); }
-#reveal .rt b { display: block; margin-top: 8px; font-weight: 800; font-size: clamp(28px, 3.6vw, 58px); letter-spacing: .04em; text-transform: uppercase; }
-#crate .skip { position: absolute; right: 24px; bottom: 18px; font-family: var(--f-head); font-size: 12px; letter-spacing: .24em; color: var(--ink-dim); }
+#reveal .pad { position: absolute; left: 50%; top: 66%; width: 52vw; height: 13vw; transform: translate(-50%, -50%) rotateX(74deg); border-radius: 50%;
+  border: 2px solid var(--rar); box-shadow: 0 0 40px var(--rar), inset 0 0 60px color-mix(in srgb, var(--rar) 60%, transparent);
+  background: repeating-radial-gradient(circle, color-mix(in srgb, var(--rar) 30%, transparent) 0 2px, transparent 2px 22px); }
+#reveal .cone { position: absolute; left: 50%; top: 18%; width: 46vw; height: 50%; transform: translateX(-50%);
+  background: linear-gradient(0deg, color-mix(in srgb, var(--rar) 34%, transparent), transparent); clip-path: polygon(8% 0, 92% 0, 100% 100%, 0 100%); opacity: .55; mix-blend-mode: screen; }
+#matWrap { position: relative; width: min(56vw, 860px); aspect-ratio: 4/3; margin-top: -6vh; }
+#matWrap img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+#revImg { clip-path: inset(0 0 100% 0); filter: drop-shadow(0 0 40px var(--rar)); }
+#revGhost { opacity: 0; filter: brightness(0) invert(1) drop-shadow(0 0 20px var(--rar)); mix-blend-mode: screen; }
+#revR, #revB { opacity: 0; mix-blend-mode: screen; }
+#revR { filter: brightness(.6) sepia(1) saturate(9) hue-rotate(-50deg); } #revB { filter: brightness(.6) sepia(1) saturate(9) hue-rotate(160deg); }
+#reveal.on #revGhost { animation: ghost 1.4s ease forwards; }
+@keyframes ghost { 0% { opacity: 0; transform: scale(.7); } 25% { opacity: .9; transform: scale(1.02); } 70% { opacity: .5; } 100% { opacity: 0; transform: scale(1); } }
+#reveal.on #revImg { animation: wipe 1.15s cubic-bezier(.5,0,.2,1) .25s forwards; }
+@keyframes wipe { to { clip-path: inset(0 0 0 0); } }
+#reveal.on #revR { animation: glR 1.6s steps(8) .2s; } #reveal.on #revB { animation: glB 1.6s steps(8) .2s; }
+@keyframes glR { 0%, 100% { opacity: 0; transform: none; } 10%, 60% { opacity: .55; transform: translate(-9px, 2px); } 35% { opacity: .5; transform: translate(6px, -3px); } }
+@keyframes glB { 0%, 100% { opacity: 0; transform: none; } 10%, 60% { opacity: .55; transform: translate(9px, -2px); } 35% { opacity: .5; transform: translate(-6px, 3px); } }
+#matLine { position: absolute; left: -6%; right: -6%; top: 0; height: 3px; opacity: 0; background: linear-gradient(90deg, transparent, #fff, var(--rar), #fff, transparent);
+  box-shadow: 0 0 24px 6px var(--rar); }
+#reveal.on #matLine { animation: mline 1.15s cubic-bezier(.5,0,.2,1) .25s forwards; }
+@keyframes mline { 0% { top: 0; opacity: 1; } 92% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
+#reveal .wave { position: absolute; left: 50%; top: 44%; width: 30px; height: 30px; margin: -15px; border-radius: 50%; border: 2px solid var(--rar); opacity: 0; box-shadow: 0 0 30px var(--rar); }
+#reveal.on .wave { animation: shock 1.6s cubic-bezier(.1,.7,.3,1) forwards; }
+#reveal.on .wave.w2 { animation-delay: .25s; } #reveal.on .wave.w3 { animation-delay: .5s; }
+#reveal .rt { position: absolute; left: 0; right: 0; bottom: 9vh; text-align: center; font-family: var(--f-head); }
+#reveal .rt small { display: inline-block; padding: 4px 16px; font-weight: 700; letter-spacing: .4em; font-size: 13px; color: var(--rar); border: 1px solid var(--rar);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--rar) 50%, transparent); background: color-mix(in srgb, var(--rar) 12%, transparent); }
+#reveal .rt b { display: block; margin-top: 12px; font-weight: 800; font-size: clamp(28px, 3.6vw, 58px); letter-spacing: .04em; text-transform: uppercase;
+  text-shadow: 0 0 22px color-mix(in srgb, var(--rar) 60%, transparent); }
+#reveal .rt i { display: block; margin-top: 8px; font-style: normal; font-size: 13px; letter-spacing: .3em; color: #9fb7c4; }
+#cfx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 6; }
+#crate .skip { position: absolute; right: 48px; bottom: 40px; z-index: 8; font-family: var(--f-head); font-size: 12px; letter-spacing: .24em; color: #7fa9bd; }
 </style>
 
 <canvas id="bg" class="layer"></canvas>
@@ -297,11 +372,21 @@ body.inspect #inspTitle { opacity: 1; }
 </footer>
 
 <div id="crate" hidden>
-  <div class="scan"></div>
+  <div class="hex"></div><div class="floor"></div>
+  <div id="cube3"><div class="ring r1"></div><div class="ring r2"></div>
+    <div class="spin"><div class="f f1"></div><div class="f f2"></div><div class="f f3"></div><div class="f f4"></div><div class="f f5"></div><div class="f f6"></div><div class="core"></div></div>
+    <div class="laser"></div>
+    <div class="lbl"><span id="cubeTxt">MATRICE VERROUILLÉE</span><div class="bar"><i id="cubeBar"></i></div><small id="cubeSub">ARMURERIE STARK · PROTOCOLE 7</small></div></div>
+  <div id="shock"></div>
+  <div id="ring"></div><div id="beam"></div><div id="speed">VITESSE <b id="spd">0</b> OBJ/S</div>
+  <div id="reveal"><div id="rays"></div><div class="cone"></div><div class="pad"></div><div class="wave"></div><div class="wave w2"></div><div class="wave w3"></div>
+    <div id="matWrap"><img id="revGhost" alt=""><img id="revR" alt=""><img id="revB" alt=""><img id="revImg" alt=""><div id="matLine"></div></div>
+    <div class="rt"><small id="revRar"></small><b id="revName"></b><i id="revInfo"></i></div></div>
+  <canvas id="cfx"></canvas><div id="flash"></div>
+  <div class="corner a"></div><div class="corner b"></div><div class="corner c"></div><div class="corner d"></div>
   <div class="boot" id="bootTxt"></div>
-  <div id="box"><div class="lid"></div><div class="body"></div><div class="lock"></div><div class="label">CAISSE DE L'ARMURERIE</div></div>
-  <div id="reel"><div id="strip"></div><div id="marker"></div></div>
-  <div id="reveal"><div id="rays"></div><img id="revImg" alt=""><div class="rt"><small id="revRar"></small><b id="revName"></b></div></div>
+  <div class="hudR">DÉCHIFFREMENT QUANTIQUE<br><b id="hudPct">00%</b><br><span id="hudStage">INITIALISATION</span></div>
+  <div class="scan"></div>
   <div class="skip">CLIC POUR PASSER</div>
 </div>
 
@@ -382,6 +467,8 @@ const SFX = (() => {
     },
     shot() { noise("highpass", 3000, 5000, .7, .004, 1); noise("lowpass", 2200, 600, .7, .12, .8); tone("sine", 130, 42, .18, .9, { wet: 0 }); noise("bandpass", 900, 500, .8, .55, .2, { at: .01, wet: .55 }); },
     boom() { tone("sine", 60, 30, 1.2, .6, { wet: .2 }); noise("lowpass", 600, 60, .7, 1, .3, { a: .02 }); },
+    charge() { tone("sawtooth", 90, 900, .8, .07, { lp: 2400, wet: .2 }); tone("sine", 300, 2400, .78, .06, { wet: .3 }); noise("bandpass", 400, 5000, 2, .8, .12, { a: .5 }); },
+    zap() { noise("bandpass", 600, 7000, 3, 1.1, .16, { a: .05, wet: .3 }); tone("sine", 220, 880, 1.1, .06, { fm: [2.01, 4], wet: .4 }); tone("triangle", 1320, 1760, .9, .03, { at: .2, wet: .4 }); },
     scan() { tone("sine", 1700, 2400, .14, .05, { wet: .1 }); tone("sine", 2400, 2400, .05, .04, { at: .16, wet: .1 }); },
     flyby() {                                              // vaisseau qui traverse le ciel de gauche à droite (7 s)
       noise("bandpass", 260, 900, 1.2, 3.4, .16, { a: 2.2, pan: -.9, panTo: .1, wet: .25 });
@@ -720,76 +807,156 @@ function preloadAll(progress, stop, limite) {
   });
 }
 function wait(ms) { return new Promise((r) => { const h = setTimeout(r, ms); crateSkip && crateSkip.timers.push(h); }); }
+/* étincelles / débris holographiques de l'écran de caisse (canvas #cfx) */
+const CFX = (() => {
+  let c = null, x = null, parts = [], raf = 0;
+  function sizeIt() { c = c || $("#cfx"); x = x || c.getContext("2d"); const d = Math.min(devicePixelRatio || 1, 1.5); c.width = innerWidth * d; c.height = innerHeight * d; x.setTransform(d, 0, 0, d, 0, 0); }
+  function step() {
+    raf = parts.length ? requestAnimationFrame(step) : 0;
+    x.clearRect(0, 0, innerWidth, innerHeight); x.globalCompositeOperation = "lighter";
+    const now = performance.now();
+    parts = parts.filter((p) => {
+      const k = (now - p.t0) / p.life; if (k >= 1) return false;
+      const dt = (now - p.last) / 1000; p.last = now;
+      p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= .985; p.vy = p.vy * .985 + p.g * dt;
+      x.globalAlpha = 1 - k; x.fillStyle = p.col;
+      if (p.sq) { x.save(); x.translate(p.x, p.y); x.rotate(k * p.rot); x.strokeStyle = p.col; x.lineWidth = 1.5; x.strokeRect(-p.s, -p.s, p.s * 2, p.s * 2); x.restore(); }
+      else { x.fillRect(p.x - p.s / 2, p.y - p.s / 2, p.s, p.s * (p.str || 1)); }
+      return true;
+    });
+    x.globalAlpha = 1;
+  }
+  return {
+    burst(cx, cy, col, n, sp, opt = {}) {
+      if (!c) sizeIt();
+      const now = performance.now();
+      for (let i = 0; i < n; i++) { const a = Math.random() * 6.283, v = sp * (.25 + Math.random()), sq = opt.sq && Math.random() < .35;
+        parts.push({ x: cx + (opt.w ? (Math.random() - .5) * opt.w : 0), y: cy + (opt.h ? (Math.random() - .5) * opt.h : 0), vx: Math.cos(a) * v, vy: Math.sin(a) * v * (opt.flat || 1) - (opt.up || 0),
+          g: opt.g || 0, s: sq ? 3 + Math.random() * 7 : 1.5 + Math.random() * 2.5, str: opt.str, sq, rot: (Math.random() - .5) * 12, col: Math.random() < .3 ? "#ffffff" : col,
+          life: 600 + Math.random() * (opt.life || 900), t0: now, last: now }); }
+      if (!raf) raf = requestAnimationFrame(step);
+    },
+    resize: () => { if (c) sizeIt(); },
+    clear() { parts = []; },
+  };
+})();
+addEventListener("resize", () => CFX.resize());
+/* texte qui se « déchiffre » lettre par lettre */
+function decode(el, txt, ms) {
+  const G = "█▓▒░<>/\\#$%&@*+=ABCDEFXYZ0123456789", t0 = performance.now();
+  (function s() { const k = clamp((performance.now() - t0) / ms, 0, 1), n = Math.floor(txt.length * k);
+    el.textContent = txt.slice(0, n) + Array.from(txt.slice(n), (ch) => ch === " " ? " " : G[Math.random() * G.length | 0]).join("");
+    if (k < 1) requestAnimationFrame(s); })();
+}
+let GL_READY = Promise.resolve();
 async function openCase(intro) {
   if (!SKINS.length || document.body.classList.contains("crate")) return;
-  const crate = $("#crate"), box = $("#box"), reel = $("#reel"), strip = $("#strip"), rev = $("#reveal");
+  const crate = $("#crate"), cube = $("#cube3"), ring = $("#ring"), beam = $("#beam"), spd = $("#speed"), rev = $("#reveal");
   const gen = ++crateGen;
-  document.body.classList.add("crate"); crate.hidden = false; crate.classList.remove("out");
+  document.body.classList.add("crate"); crate.hidden = false; crate.classList.remove("out", "fast");
   if (GL) GL.paused = true;                           // la 3D se repose pendant l'ouverture de caisse
-  box.className = ""; reel.classList.remove("on"); rev.classList.remove("on"); strip.style.transform = "translateX(0)"; strip.innerHTML = "";
+  cube.className = ""; ring.classList.remove("on"); ring.innerHTML = ""; beam.classList.remove("on"); spd.classList.remove("on"); rev.classList.remove("on");
+  $("#shock").className = ""; $("#flash").className = ""; CFX.clear();
+  const pct = (p, stage) => { $("#hudPct").textContent = String(Math.round(p)).padStart(2, "0") + "%"; $("#cubeBar").style.setProperty("--p", p + "%"); if (stage) $("#hudStage").textContent = stage; };
+  pct(0, "INITIALISATION"); $("#cubeTxt").textContent = "MATRICE VERROUILLÉE";
   let win = pickWinner(intro);
   let done = false;
   crateSkip = { timers: [], finish: null };
-  const finish = () => {
+  const finish = async () => {
     if (done) return; done = true; crateSkip.timers.forEach(clearTimeout); cancelAnimationFrame(crateSkip.raf);
+    await Promise.race([GL_READY, new Promise((r) => setTimeout(r, 4000))]);   // la 3D doit être prête avant de montrer le skin
     crate.classList.add("out"); document.body.classList.remove("crate");
     if (GL) GL.paused = false;
-    setTimeout(() => { if (gen === crateGen) crate.hidden = true; }, 900);
+    setTimeout(() => { if (gen === crateGen) { crate.hidden = true; CFX.clear(); } }, 900);
     VIEW = filtered(); let i = VIEW.findIndex((s) => s.id === win.id);
     if (i < 0) { cat = "tout"; buildTabs(); VIEW = SKINS; buildCards(); i = VIEW.findIndex((s) => s.id === win.id); }
     show(i, 1, { silent: true }); report((intro ? "intro terminée" : "caisse ouverte") + " : " + win.nom);
   };
   crateSkip.finish = finish;
   crate.onclick = skipCrate;
-  // 1. démarrage façon terminal
+  const cx = innerWidth / 2, cy = innerHeight * .45;
+  // 1. le cube de données apparaît tout de suite (animé par le navigateur : fluide même pendant les chargements)
+  requestAnimationFrame(() => cube.classList.add("in"));
+  const bt = $("#bootTxt"); bt.innerHTML = "";
+  const line = (html) => { const el = document.createElement("span"); el.innerHTML = html + "\n"; bt.appendChild(el); SFX.tick(); return el; };
   if (intro) {
-    const bt = $("#bootTxt"); bt.innerHTML = ""; SFX.boom();
-    bt.innerHTML += "> CONNEXION À L'ARMURERIE ........ <b>OK</b>\n"; SFX.tick(); await wait(420); if (done) return;
-    // les images doivent être là AVANT la roulette (au 1er lancement elles se téléchargent depuis Steam)
-    const line = document.createElement("span"); bt.appendChild(line);
-    const t0 = performance.now();
-    await preloadAll((n, tot) => { line.innerHTML = "> TÉLÉCHARGEMENT DES SKINS ......... <b>" + n + "/" + tot + "</b>\n"; },
-                     () => done, 25000);
+    SFX.boom();
+    line("> LIAISON ARMURERIE STARK ........ <b>ÉTABLIE</b>"); pct(8, "LIAISON"); await wait(380); if (done) return;
+    // en parallèle : images des skins (1er lancement : téléchargées depuis Steam) + moteur 3D du décor
+    const li = line(""), lg = line("> MOTEUR HOLOGRAPHIQUE ............ <i>COMPILATION</i>");
+    let pImg = 0, pGl = 0; const upd = () => pct(8 + pImg * 62 + pGl * 22, "SYNCHRONISATION");
+    const glDone = Promise.race([GL_READY, new Promise((r) => setTimeout(r, 15000))]).then(() => { pGl = 1; upd(); lg.innerHTML = "> MOTEUR HOLOGRAPHIQUE ............ <b>EN LIGNE</b>\n"; SFX.tick(); });
+    await Promise.all([glDone, preloadAll((n, tot) => { pImg = n / tot; upd(); li.innerHTML = "> TÉLÉCHARGEMENT DES SKINS ......... <b>" + n + "/" + tot + "</b>\n"; }, () => done, 25000)]);
     if (done) return;
     const ok = SKINS.filter((s) => s._ok).length;
-    line.innerHTML = "> INVENTAIRE ....................... <b>" + ok + " OBJETS</b>\n"; SFX.tick();
-    if (performance.now() - t0 < 300) await wait(300); if (done) return;
-    bt.innerHTML += "> CLÉ DE CAISSE ..................... <b>INSÉRÉE</b>\n"; SFX.tick(); await wait(420); if (done) return;
-  } else $("#bootTxt").innerHTML = "> CAISSE DE L'ARMURERIE";
-  // 2. la caisse arrive puis s'ouvre
-  box.classList.add("in"); SFX.whoosh(); await wait(1000); if (done) return;
-  SFX.unlock(); box.classList.add("open"); await wait(650); if (done) return;
-  // 3. la roulette
-  const N = 64, WIN_AT = 56, CW = 206;
+    li.innerHTML = "> INVENTAIRE INDEXÉ ................ <b>" + ok + " OBJETS</b>\n";
+    line("> CLÉ QUANTIQUE ..................... <b>ACCEPTÉE</b>"); pct(96, "CLÉ ACCEPTÉE"); await wait(350); if (done) return;
+  } else {
+    line("> MATRICE DE L'ARMURERIE ........... <b>CHARGÉE</b>"); SFX.whoosh(); pct(40, "ANALYSE");
+    await wait(700); if (done) return; pct(90, "CLÉ ACCEPTÉE");
+  }
+  // 2. surcharge puis explosion du cube
+  $("#cubeTxt").textContent = "DÉCHIFFREMENT"; crate.classList.add("fast"); SFX.charge(); pct(100, "SURCHARGE");
+  await wait(750); if (done) return;
+  cube.classList.add("boom", "unlock"); $("#shock").classList.add("go"); $("#flash").classList.add("go");
+  SFX.unlock(); SFX.boom(); CFX.burst(cx, cy, "#4fd8ff", 140, 900, { sq: true, life: 900 });
+  await wait(450); if (done) return;
+  crate.classList.remove("fast"); $("#hudStage").textContent = "SÉLECTION DE L'OBJET";
+  // 3. le carrousel holographique courbe
+  const N = 64, WIN_AT = 56, CW = 216, RAD = 1050;
   const loaded = SKINS.filter((s) => s._ok), POOL = loaded.length >= 6 ? loaded : SKINS;   // jamais de carte vide
   if (!POOL.includes(win)) { const w2 = POOL.filter((s) => s.nom.startsWith("★") === win.nom.startsWith("★")); win = (w2.length ? w2 : POOL)[Math.random() * (w2.length || POOL.length) | 0]; }
   const stars = POOL.filter((s) => s.nom.startsWith("★")), guns = POOL.filter((s) => !s.nom.startsWith("★"));
   const filler = () => { const pool = Math.random() < .045 && stars.length ? stars : (guns.length ? guns : SKINS); return pool[Math.random() * pool.length | 0]; };
   const items = Array.from({ length: N }, (_, i) => i === WIN_AT ? win : filler());   // comme dans CS : les ★ sont rares
-  strip.innerHTML = items.map((s, i) => { const star = s.nom.startsWith("★"); return `<div class="rc${star ? " star" : ""}" style="--c:${s.couleur}">
-    <img src="${img(s)}" alt="">${star ? '<div class="q">★</div>' : ""}<span>${star ? "★ Objet rare spécial" : s.nom}</span></div>`; }).join("");
-  reel.classList.add("on");
-  const target = WIN_AT * CW + CW / 2 - (20 + Math.random() * (CW - 40)), dur = intro ? 6200 : 5600, t0 = performance.now();
-  let lastCell = -1;
+  ring.innerHTML = items.map((s, i) => { const star = s.nom.startsWith("★"); return `<div class="rc${star ? " star" : ""}" style="--c:${s.couleur}">
+    <em>${String(i + 1).padStart(3, "0")} · ${star ? "???" : (s.rarete || "").toUpperCase()}</em><img src="${img(s)}" alt="">${star ? '<div class="q">★</div>' : ""}<span>${star ? "★ Objet rare spécial" : s.nom}</span></div>`; }).join("");
+  const cards = [...ring.children];
+  const place = (x, pull = 0) => {
+    for (let i = 0; i < N; i++) {
+      const a = (i * CW - x) / RAD, el = cards[i];
+      if (Math.abs(a) > 1.25) { if (el.style.visibility !== "hidden") el.style.visibility = "hidden"; continue; }
+      el.style.visibility = "";
+      const p = i === WIN_AT ? pull : 0, fade = i === WIN_AT ? 1 : 1 - pull;
+      el.style.transform = `translateZ(${-RAD}px) rotateY(${a}rad) translateZ(${RAD + p * 330}px) scale(${1 + p * .25})`;
+      el.style.opacity = (clamp(1.35 - Math.abs(a) * 1.05, 0, 1) * fade).toFixed(3);
+      el.classList.toggle("hot", Math.abs(a) < CW / RAD / 2);
+    }
+  };
+  place(-CW * 4); ring.classList.add("on"); beam.classList.add("on"); spd.classList.add("on"); SFX.whoosh();
+  const start = -CW * 4, target = WIN_AT * CW + (Math.random() - .5) * (CW - 50), dur = intro ? 6200 : 5600, t0 = performance.now();
+  let lastCell = null, lastX = start, lastT = t0;
   await new Promise((resolve) => {
     (function step(now) {
       if (done) return resolve();
-      const q = clamp((now - t0) / dur, 0, 1), e = 1 - Math.pow(1 - q, 4.2), x = target * e;
-      strip.style.transform = `translateX(${-x}px)`;
-      const cell = Math.floor((x + CW / 2) / CW); if (cell !== lastCell) { lastCell = cell; SFX.tick(); }
+      const q = clamp((now - t0) / dur, 0, 1), e = 1 - Math.pow(1 - q, 4.2), x = start + (target - start) * e;
+      place(x);
+      const cell = Math.round(x / CW); if (cell !== lastCell) { lastCell = cell; SFX.tick(); }
+      if (now - lastT > 120) { $("#spd").textContent = Math.round(Math.abs(x - lastX) / CW / ((now - lastT) / 1000)); lastX = x; lastT = now; pct(100 * q, "SÉLECTION DE L'OBJET"); }
       if (q < 1) crateSkip.raf = requestAnimationFrame(step); else resolve();
     })(performance.now());
   });
   if (done) return;
-  // 4. révélation
-  const wc = strip.children[WIN_AT]; wc.classList.add("win");
+  // 4. l'objet gagnant sort du carrousel, les autres se dissolvent
+  $("#spd").textContent = "0"; cards[WIN_AT].classList.add("win"); SFX.scan();
   document.documentElement.style.setProperty("--rar", win.couleur);
-  await wait(500); if (done) return;
-  reel.classList.remove("on");
-  $("#revImg").src = img(win); $("#revRar").textContent = win.rarete; $("#revName").textContent = win.nom;
-  rev.classList.add("on"); SFX.reveal(win.nom.startsWith("★") || win.rarete === "Contrebande"); if (win.categorie === "couteau") setTimeout(SFX.shing, 250);
-  burst(innerWidth / 2, innerHeight * .46, win.couleur, 120, 700);
-  await wait(intro ? 2600 : 2200); if (done) return;
+  await wait(350); if (done) return;
+  spd.classList.remove("on"); beam.classList.remove("on");
+  const p0 = performance.now();
+  await new Promise((resolve) => { (function st(now) { if (done) return resolve(); const k = clamp((now - p0) / 600, 0, 1), e = k * k * (3 - 2 * k);
+    place(target, e); if (k < 1) crateSkip.raf = requestAnimationFrame(st); else resolve(); })(performance.now()); });
+  if (done) return;
+  CFX.burst(cx, cy, win.couleur, 220, 260, { w: 280, h: 300, g: -60, sq: true, life: 1100 });   // la carte se désintègre en données
+  ring.classList.remove("on");
+  // 5. matérialisation : le skin se construit ligne par ligne
+  for (const id of ["#revImg", "#revGhost", "#revR", "#revB"]) $(id).src = img(win);
+  $("#revRar").textContent = (win.rarete || "").toUpperCase();
+  $("#revInfo").textContent = [win.collection, win.prix].filter(Boolean).join("  ·  ");
+  $("#hudStage").textContent = "MATÉRIALISATION";
+  rev.classList.add("on"); SFX.zap(); decode($("#revName"), win.nom, 1100);
+  setTimeout(() => { if (done) return; SFX.reveal(win.nom.startsWith("★") || win.rarete === "Contrebande"); if (win.categorie === "couteau") setTimeout(SFX.shing, 200);
+    CFX.burst(cx, innerHeight * .44, win.couleur, 160, 700, { flat: .55, life: 1200 }); }, 1250);
+  await wait(intro ? 3900 : 3500); if (done) return;
   finish();
 }
 function skipCrate() { if (crateSkip && crateSkip.finish) { SFX.click(); crateSkip.finish(); } }
@@ -835,7 +1002,7 @@ async function poll() {
 }
 
 /* ================= démarrage ================= */
-const VER = "2026-10-10f";
+const VER = "2026-10-13b";
 function loadScript(src) { if (src.startsWith("web/")) src += "?v=" + VER; return new Promise((res, rej) => { const el = document.createElement("script"); el.src = src; el.onload = res; el.onerror = rej; document.head.appendChild(el); }); }
 async function start3D() {
   if (/[?&]2d\b/.test(location.search)) return;               // ?2d : ancienne vitrine
@@ -844,8 +1011,11 @@ async function start3D() {
       if (!(f === "three.min.js" && window.THREE)) await loadScript("web/three/" + f);
     try { await loadScript("web/vitrine_decor.js"); } catch (e) {}
     await loadScript("web/vitrine3d.js");
-    GL = window.Vitrine3D; size();
-    GL.init($("#gl"), bg);
+    const V3 = window.Vitrine3D;
+    V3.paused = document.body.classList.contains("crate");          // caisse affichée : la 3D attend derrière
+    await V3.init($("#gl"), bg);
+    V3.paused = document.body.classList.contains("crate");
+    GL = V3; size();
     GL.on("eclair", (p) => { SFX.thunder(p); visorFlash(p); });
     GL.on("scan", () => SFX.scan());
     GL.on("vaisseau", () => SFX.flyby());
@@ -856,7 +1026,7 @@ async function start3D() {
 }
 async function whenVisible() {
   if (document.visibilityState !== "visible") await new Promise((r) => document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && r()));
-  await new Promise((r) => setTimeout(r, 300));
+  await new Promise((r) => setTimeout(r, 60));
 }
 (async function start() {
   try {
@@ -866,7 +1036,7 @@ async function whenVisible() {
   $("#srcPrix").textContent = META.source_prix || "";
   if (LIVE) { try { const e = await (await fetch("etat", { cache: "no-store" })).json(); cmdSeq = e.seq; if (typeof e.sons === "number") sonsVol = clamp(e.sons / 100, 0, 1); } catch (e) {} }
   SFX.init(); SFX.setVol(sonsVol);
-  await start3D();
+  GL_READY = start3D();                                      // la 3D se prépare PENDANT l'écran de caisse (plus d'attente au début)
   buildTabs(); VIEW = filtered(); buildCards();
   requestAnimationFrame(drawBg); requestAnimationFrame(loop);
   setInterval(poll, 400);

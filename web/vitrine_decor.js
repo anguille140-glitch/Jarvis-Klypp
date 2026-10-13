@@ -173,7 +173,8 @@
   }
 
   /* ---------- construction ---------- */
-  D.build = function (o) {
+  D.build = async function (o) {
+    const yld = () => new Promise((r) => setTimeout(r, 0));   // rend la main : la page reste fluide pendant la construction
     THREE = o.THREE; const scene = o.scene, FLOOR = o.FLOOR, R = o.R;
     D.aniso = R.capabilities.getMaxAnisotropy();
     const add = (m) => { scene.add(m); return m; };
@@ -183,15 +184,18 @@
     // ciel
     const skyMat = new THREE.MeshBasicMaterial({ map: skyTex(), side: THREE.BackSide, fog: false, toneMapped: false });
     const sky = add(new THREE.Mesh(new THREE.SphereGeometry(60, 48, 24), skyMat)); sky.rotation.y = -.4;
+    await yld();
     // lumières d'ambiance nocturnes
     const hemi = add(new THREE.HemisphereLight(0x4a5c84, 0x140e08, .16));
     const moon = add(new THREE.DirectionalLight(0x8fa6d8, .28)); moon.position.set(4, 9, -6);
     const flashL = add(new THREE.DirectionalLight(0xdfe8ff, 0)); flashL.position.set(-6, 12, 4);
+    await yld();
     // sol pavé mouillé (un peu transparent sous la vitrine : on y voit le reflet du skin)
     const cb = cobbles();
     const ground = add(new THREE.Mesh(new THREE.PlaneGeometry(40, 60), new THREE.MeshStandardMaterial({ map: cb.map, roughnessMap: cb.rough, bumpMap: cb.bump,
       bumpScale: .035, roughness: 1, metalness: 0, color: 0xb8b4ac, envMapIntensity: 1.6 })));
     ground.rotation.x = -Math.PI / 2; ground.position.set(0, FLOOR, -18);
+    await yld();
     // rangées de maisons de chaque côté de la ruelle
     const roof = roofTex(), rnd = rng(42);
     const lanterns = [], houses = [];
@@ -237,9 +241,11 @@
         z -= w; n++;
       }
     }
+    await yld();
     // lumières des 4 lanternes les plus proches (les autres brillent sans éclairer : rendu léger)
     lanterns.sort((a, b) => b.pos.z - a.pos.z);
     const lampLights = lanterns.slice(0, 4).map((l) => { const p = add(new THREE.PointLight(0xffa860, 7, 10, 2)); p.position.copy(l.pos).add(new THREE.Vector3(0, -.2, 0)); l.light = p; return p; });
+    await yld();
     // guirlandes lumineuses au-dessus de la ruelle
     const bulbTex = radial([[0, "rgba(255,240,200,1)"], [.3, "rgba(255,200,120,.5)"], [1, "rgba(255,160,80,0)"]], 64);
     const bulbs = [];
@@ -250,6 +256,7 @@
       for (let i = 1; i < N; i++) { const s = add(new THREE.Sprite(new THREE.SpriteMaterial({ map: bulbTex, color: [0xffd08a, 0xffb060, 0xfff0c8][i % 3], blending: THREE.AdditiveBlending, depthWrite: false, transparent: true })));
         s.position.copy(pts[i]).add(new THREE.Vector3(0, -.08, 0)); s.scale.setScalar(.34); s.userData.ph = Math.random() * 6; bulbs.push(s); }
     }
+    await yld();
     // arche en pierre au-dessus de la ruelle
     const archShape = new THREE.Shape(); archShape.moveTo(-5.2, 0); archShape.lineTo(5.2, 0); archShape.lineTo(5.2, 7.6); archShape.lineTo(-5.2, 7.6); archShape.lineTo(-5.2, 0);
     const hole = new THREE.Path(); hole.moveTo(-3.2, 0); hole.lineTo(-3.2, 3.6); hole.absarc(0, 3.6, 3.2, Math.PI, 0, true); hole.lineTo(3.2, 0); hole.lineTo(-3.2, 0); archShape.holes.push(hole);
@@ -260,6 +267,7 @@
     archFront.position.set(0, FLOOR, -15.5 + 1.41);
     archFront.geometry.computeBoundingBox(); { const uv = archFront.geometry.attributes.uv, p = archFront.geometry.attributes.position;
       for (let i = 0; i < uv.count; i++) uv.setXY(i, (p.getX(i) + 5.2) / 10.4, p.getY(i) / 7.6); }
+    await yld();
     // clocher au fond, avec une horloge holographique à l'heure réelle
     const tower = new THREE.Group(); tower.position.set(-1.6, FLOOR, -40); scene.add(tower);
     const tf = facade(3.4, 16, 77);
@@ -281,6 +289,7 @@
     drawClock(); setInterval(drawClock, 20000);
     const clock = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 2.4), new THREE.MeshBasicMaterial({ map: clockTex, transparent: true, blending: THREE.AdditiveBlending, toneMapped: false, depthWrite: false }));
     clock.position.set(0, 13.4, 1.75); tower.add(clock);
+    await yld();
     // néons (touche futuriste) et panneau holographique qui défile
     const neons = [];
     const neon = (text, color, x, y, z, ry, w = 2.6) => {
@@ -294,6 +303,7 @@
     const board = add(new THREE.Mesh(new THREE.PlaneGeometry(4.2, .52), new THREE.MeshBasicMaterial({ map: boardTex, transparent: true, blending: THREE.AdditiveBlending, toneMapped: false, depthWrite: false })));
     board.position.set(-4.5, FLOOR + 5.6, -20); board.rotation.y = Math.PI / 2;
     let boardX = 0; const boardText = "  ARMURERIE DE KLYPP  ◆  MARCHÉ EN DIRECT  ◆  AWP · DRAGON LORE  ▲  KARAMBIT · FADE  ▲  M4A4 · HOWL  ▲  ";
+    await yld();
     // socle holographique sous le skin
     const holo = new THREE.Group(); holo.position.y = FLOOR; scene.add(holo);
     const base = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.32, .2, 72), new THREE.MeshStandardMaterial({ color: 0x15181d, metalness: .85, roughness: .3 }));
@@ -320,6 +330,7 @@
     const pgeo = new THREE.BufferGeometry(); pgeo.setAttribute("position", new THREE.BufferAttribute(pp, 3));
     const motes = new THREE.Points(pgeo, new THREE.PointsMaterial({ size: .04, map: radial([[0, "rgba(255,255,255,1)"], [1, "rgba(255,255,255,0)"]], 32), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
     holo.add(motes); rarityMats.push(motes.material);
+    await yld();
     // drone éclaireur qui patrouille au-dessus de la place
     const drone = new THREE.Group(); scene.add(drone);
     const dmat = new THREE.MeshStandardMaterial({ color: 0x1c2026, metalness: .8, roughness: .35 });
@@ -333,6 +344,7 @@
       color: 0x9fe6ff, transparent: true, opacity: .09, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
     beam.position.y = -3; drone.add(beam);
     const spot = new THREE.SpotLight(0xbfefff, 9, 14, .32, .7, 1.6); drone.add(spot); spot.position.set(0, -.1, 0); drone.add(spot.target); spot.target.position.set(0, -6, 0);
+    await yld();
     // pluie (traits fins qui brillent près des lanternes) et éclaboussures sur les pavés
     const NR = 3200, rs = new Float32Array(NR * 2 * 4), tip = new Float32Array(NR * 2), rpos = new Float32Array(NR * 2 * 3);
     for (let i = 0; i < NR; i++) { const s = [(Math.random() - .5) * 22, Math.random() * 14, -32 + Math.random() * 38, 7 + Math.random() * 5];
@@ -385,6 +397,7 @@
       const val = add(new THREE.Mesh(new THREE.PlaneGeometry(Math.min(2.2, hs.w * .55), .22), aw.material)); val.rotation.y = hs.side * Math.PI / 2;
       val.position.set(hs.fx - hs.side * .92, FLOOR + 2.4, zc);
     });
+    await yld();
     // terrasse de café sous un parasol
     const wood = new THREE.MeshStandardMaterial({ color: 0x5b3a22, roughness: .7 }), ironM = new THREE.MeshStandardMaterial({ color: 0x18191b, metalness: .7, roughness: .4 });
     [[3.1, -6.2], [3.4, -8.4]].forEach(([tx, tz], k) => {
@@ -398,6 +411,7 @@
       const cnd = add(new THREE.Sprite(new THREE.SpriteMaterial({ map: radial([[0, "rgba(255,210,140,1)"], [1, "rgba(255,150,60,0)"]], 32), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true })));
       cnd.position.set(tx, FLOOR + .84, tz); cnd.scale.setScalar(.35); extraUpd.push((dt, t) => { cnd.material.opacity = .7 + .3 * Math.sin(t * 17 + k * 3) * Math.sin(t * 7.1); });
     });
+    await yld();
     // linge tendu entre les façades
     const clothCols = [0xd9d2c0, 0x7b2d2d, 0x2e4e74, 0xc9a23a, 0xe7e2d6, 0x3f6a45];
     [-8.5, -21].forEach((lz, j) => {
@@ -409,6 +423,7 @@
         cl.geometry.translate(0, -.32, 0); cl.position.copy(pts[i]); const ph = rnd() * 6; extraUpd.push((dt, t) => { cl.rotation.x = Math.sin(t * 1.3 + ph) * .12; });
       }
     });
+    await yld();
     // cyprès et oliviers en pots, caisses et tonneaux
     const foliage = (() => { const [c, x] = canvas(128, 256), r2 = rng(5); x.fillStyle = "#16261a"; x.fillRect(0, 0, 128, 256); for (let i = 0; i < 40; i++) leaves(x, r2() * 128, r2() * 256, 18, 30, r2, i % 2 === 0); return tex(c); })();
     const pot = new THREE.MeshStandardMaterial({ color: 0x8e4a2c, roughness: .8 });
@@ -424,6 +439,7 @@
       const cr = add(new THREE.Mesh(new THREE.BoxGeometry(.6, .6, .6), new THREE.MeshStandardMaterial({ map: crateTex, roughness: .85 }))); cr.position.set(cx, FLOOR + .3 + k * .6, cz); cr.rotation.y = k * .4;
     });
     [[-3.75, -9.4], [3.8, -4.4]].forEach(([bx2, bz]) => { const br = add(new THREE.Mesh(new THREE.CylinderGeometry(.3, .3, .85, 16), new THREE.MeshStandardMaterial({ color: 0x4a3020, roughness: .7 }))); br.position.set(bx2, FLOOR + .43, bz); });
+    await yld();
     // réverbères en fer forgé
     [[-3.55, -10.8], [3.55, -14.2]].forEach(([lx, lz]) => {
       const pole = add(new THREE.Mesh(new THREE.CylinderGeometry(.045, .07, 3.8, 10), ironM)); pole.position.set(lx, FLOOR + 1.9, lz);
@@ -432,6 +448,7 @@
       const hl = add(new THREE.Sprite(new THREE.SpriteMaterial({ map: radial([[0, "rgba(255,200,120,.85)"], [.3, "rgba(255,160,70,.2)"], [1, "rgba(255,140,60,0)"]]), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false })));
       hl.position.copy(head.position); hl.scale.setScalar(2.6);
     });
+    await yld();
     // toits : cheminées, antennes, paraboles (touche futuriste) avec feux clignotants
     const chimM = new THREE.MeshStandardMaterial({ color: 0x7a5a44, roughness: .9 });
     houses.forEach((hs, i) => {
@@ -452,6 +469,7 @@
         extraUpd.push((dt, t) => { tip.material.opacity = .5 + .5 * Math.sin(t * 3 + i); });
       }
     });
+    await yld();
     // au loin : collines sombres et lumières d'autres villages
     const hills = (() => { const W = 2048, H = 256, [c, x] = canvas(W, H), r2 = rng(9);
       const g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(.5, "rgba(30,45,70,.25)"); g.addColorStop(1, "rgba(40,60,90,.35)"); x.fillStyle = g; x.fillRect(0, 0, W, H);
@@ -462,6 +480,7 @@
       return tex(c); })();
     const hillM = add(new THREE.Mesh(new THREE.CylinderGeometry(55, 55, 16, 64, 1, true, Math.PI * .6, Math.PI * .8), new THREE.MeshBasicMaterial({ map: hills, transparent: true, fog: false, side: THREE.BackSide, depthWrite: false })));
     hillM.position.set(0, FLOOR + 4, -18);
+    await yld();
     // brume au ras du sol
     const mistTex = (() => { const [c, x] = canvas(256, 128), r2 = rng(12); for (let i = 0; i < 60; i++) { const px = r2() * 256, py = 40 + r2() * 60, r = 20 + r2() * 40;
       const g = x.createRadialGradient(px, py, 0, px, py, r); g.addColorStop(0, "rgba(170,190,215,.18)"); g.addColorStop(1, "rgba(170,190,215,0)"); x.fillStyle = g; x.fillRect(0, 0, 256, 128); } return tex(c); })();
@@ -470,6 +489,7 @@
       m.scale.set(9, 2.2, 1); const z0 = -6 - i * 3.2, sp = .12 + rnd() * .2, x0 = (rnd() - .5) * 8;
       extraUpd.push((dt, t) => { m.position.set(((x0 + t * sp + 10) % 20) - 10, FLOOR + .55, z0); });
     }
+    await yld();
     // vapeur qui sort d'une grille d'égout
     const grate = add(new THREE.Mesh(new THREE.PlaneGeometry(.7, .45), new THREE.MeshStandardMaterial({ map: (() => { const [c, x] = canvas(64, 64); x.fillStyle = "#111"; x.fillRect(0, 0, 64, 64);
       x.fillStyle = "#333"; for (let k = 0; k < 8; k++) x.fillRect(4 + k * 7.5, 4, 3, 56); return tex(c); })(), metalness: .6, roughness: .5 })));
@@ -478,6 +498,7 @@
     for (let i = 0; i < 18; i++) { const sp = add(new THREE.Sprite(new THREE.SpriteMaterial({ map: steamTex, transparent: true, depthWrite: false }))); sp.userData.ph = i / 18; puffs.push(sp); }
     extraUpd.push((dt, t) => { for (const sp of puffs) { const q = (t * .18 + sp.userData.ph) % 1; sp.position.set(-2.9 + Math.sin(q * 5 + sp.userData.ph * 9) * .25, FLOOR + q * 3.2, -4.6);
       sp.scale.setScalar(.4 + q * 1.8); sp.material.opacity = Math.sin(q * Math.PI) * .55; } });
+    await yld();
     // caniveau où l'eau de pluie s'écoule
     const water = (() => { const [c, x] = canvas(64, 512), r2 = rng(4); x.fillStyle = "#0b1622"; x.fillRect(0, 0, 64, 512);
       for (let i = 0; i < 160; i++) { x.strokeStyle = `rgba(150,190,230,${.1 + r2() * .25})`; x.lineWidth = 1 + r2() * 2; const px = r2() * 64, py = r2() * 512; x.beginPath(); x.moveTo(px, py); x.lineTo(px + (r2() - .5) * 6, py + 10 + r2() * 30); x.stroke(); }
