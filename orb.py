@@ -565,7 +565,7 @@ class Orb:
         self.black_hwnd = None
         self.black_alpha = -1
         self.saved_wallpaper: tuple[str, int] | None = None
-        if self.black_mode == "ecran" and not self.full:
+        if self.black_mode != "bureau" and not self.full:
             try:
                 self._create_black()
             except Exception:  # noqa: BLE001
@@ -789,7 +789,13 @@ class Orb:
         """Voile noir plein écran (au-dessus de tout, sous la sphère, traversé par la souris)."""
         user32, gdi32, kernel32 = self.user32, self.gdi32, ctypes.windll.kernel32
         gdi32.GetStockObject.restype = wintypes.HGDIOBJ
-        WNDPROC = type(self._wndproc)
+        # sa PROPRE procédure : celle de la sphère OpenGL refuse d'effacer le fond (WM_ERASEBKGND), le voile
+        # restait alors vide (invisible) — c'est pour ça que le fond noir ne s'affichait pas
+        LRESULT = ctypes.c_ssize_t
+        WNDPROC = ctypes.WINFUNCTYPE(LRESULT, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
+        user32.DefWindowProcW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+        user32.DefWindowProcW.restype = LRESULT
+        self._black_proc = WNDPROC(lambda h, m, w, lp: -1 if m == 0x0084 else user32.DefWindowProcW(h, m, w, lp))
 
         class WNDCLASSEXW(ctypes.Structure):
             _fields_ = [("cbSize", wintypes.UINT), ("style", wintypes.UINT), ("lpfnWndProc", WNDPROC),
@@ -802,7 +808,7 @@ class Orb:
         hinst = kernel32.GetModuleHandleW(None)
         wc = WNDCLASSEXW()
         wc.cbSize = ctypes.sizeof(WNDCLASSEXW)
-        wc.lpfnWndProc = self._wndproc
+        wc.lpfnWndProc = self._black_proc
         wc.hInstance = hinst
         wc.hbrBackground = gdi32.GetStockObject(4)                            # pinceau noir
         wc.lpszClassName = "JarvisNoir"
@@ -814,6 +820,8 @@ class Orb:
         user32.SetLayeredWindowAttributes.argtypes = [wintypes.HWND, wintypes.COLORREF, ctypes.c_ubyte,
                                                       wintypes.DWORD]
         user32.SetLayeredWindowAttributes(self.black_hwnd, 0, 0, 2)          # LWA_ALPHA, invisible au départ
+        if self.black_hwnd:
+            log.info("Fond noir prêt.")
 
     def _set_black(self, fade: float) -> None:
         if self.full and self.black_mode != "bureau":
@@ -823,12 +831,16 @@ class Orb:
             return
         if not self.black_hwnd:
             return
+        if self.black_mode in ("non", "aucun", "0") and self.presence.style.get("fond_noir") is None:
+            fade = 0.0                                  # coupé dans .env et jamais rallumé à la voix
         e = fade * fade * (3 - 2 * fade)
         alpha = int(255 * self.black_max * e)
         if alpha == self.black_alpha:
             return
         if alpha > 0 and self.black_alpha <= 0:
             self.user32.ShowWindow(self.black_hwnd, 4)
+            self.user32.InvalidateRect(self.black_hwnd, None, True)          # peint en noir tout de suite
+            self.user32.UpdateWindow(self.black_hwnd)
             self._zorder()
         self.user32.SetLayeredWindowAttributes(self.black_hwnd, 0, max(0, alpha), 2)
         if alpha <= 0:
